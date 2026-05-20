@@ -105,6 +105,45 @@ export default function PolicyOverview() {
         </div>
       </div>
 
+      {/* Scope / methodology */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">
+          Scope &amp; methodology
+        </h3>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-900 space-y-2">
+          <p>
+            This dashboard models <strong>only the HB463 changes that
+            take effect by statute</strong>: the flat-rate reduction to
+            4.99%, the standard-deduction increases ($12k&nbsp;&rarr;&nbsp;$15k
+            single &middot; $24k&nbsp;&rarr;&nbsp;$30k joint), the
+            $4k&nbsp;&rarr;&nbsp;$5k dependent exemption, the
+            $65k&nbsp;&rarr;&nbsp;$70k age-65+ retirement income exclusion
+            (TY 2027+), and the new $1,750 overtime and tip exclusions
+            (TY 2026&ndash;2028).
+          </p>
+          <p>
+            HB463 also provides for <em>further</em> annual rate cuts
+            (0.10% per year toward a 3.99% target under O.C.G.A.
+            &sect; 48-7-20(a.1)(2)), additional standard-deduction
+            increases ($750 / $375 per year toward $36,000 / $18,000
+            under &sect; 48-7-27(a)(1.1)), and additional dependent-
+            exemption increases ($125 per year toward $6,000 under
+            &sect; 48-7-26(b)) <strong>conditional on revenue-shortfall-
+            reserve and Governor&apos;s-revenue-estimate triggers</strong>.
+            Whether those triggers fire in any given year cannot be
+            predicted from the bill alone, so the dashboard does
+            <strong> not</strong> estimate the potential trigger-conditional
+            reductions or increases.
+          </p>
+          <p>
+            For the 2027 and 2028 year analyses we assume the revenue
+            triggers are <strong>not met</strong> and the corresponding
+            parameters remain at their statutorily-set values (4.99%
+            rate, $15k / $30k standard deduction, $5k dependent exemption).
+          </p>
+        </div>
+      </div>
+
       {/* References and further reading */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-3">
