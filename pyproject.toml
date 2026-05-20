@@ -1,0 +1,29 @@
+[project]
+name = "georgia-2026-tax-changes"
+version = "1.0.0"
+description = "Georgia 2026 tax changes calculator and data pipeline (HB463: lower flat rate, higher standard deduction + dependent exemption, new overtime/tip exclusions)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "policyengine-us>=1.150.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ga_tax_calc"]

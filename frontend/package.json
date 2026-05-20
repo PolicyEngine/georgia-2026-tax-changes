@@ -1,0 +1,42 @@
+{
+  "name": "georgia-2026-tax-changes-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3010",
+    "build": "rm -rf ../node_modules && ln -s frontend/node_modules ../node_modules && next build --webpack && rm -rf ../.next && cp -R .next ../.next",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@policyengine/ui-kit": "^0.9.0",
+    "@tanstack/react-query": "^5.17.9",
+    "axios": "^1.6.5",
+    "d3-scale": "^4.0.2",
+    "next": "^16.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-simple-maps": "^3.0.0",
+    "recharts": "^2.10.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@testing-library/jest-dom": "^6.4.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^20.11.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/react-simple-maps": "^3.0.6",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.0.0",
+    "jsdom": "^24.0.0",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^5.3.3",
+    "vite": "^6.4.1",
+    "vitest": "^1.2.2"
+  }
+}

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Node / Next
+node_modules/
+.next/
+*.tsbuildinfo
+.env.local
+
+# Vercel
+.vercel
+
+# Editor
+.DS_Store

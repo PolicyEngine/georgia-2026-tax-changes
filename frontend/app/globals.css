@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+/* PolicyEngine Design Tokens */
+:root {
+  /* Font */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Brand Colors - PolicyEngine Teal */
+  --primary: #319795;
+  --primary-50: #F0FDFA;
+  --primary-100: #CCFBF1;
+  --primary-200: #99F6E4;
+  --primary-300: #5EEAD4;
+  --primary-400: #2DD4BF;
+  --primary-500: #319795;
+  --primary-600: #2C7A7B;
+  --primary-700: #285E61;
+  --primary-800: #234E52;
+  --primary-900: #1D4044;
+
+  /* Gray Scale */
+  --gray-50: #F9FAFB;
+  --gray-100: #F3F4F6;
+  --gray-200: #E5E7EB;
+  --gray-300: #D1D5DB;
+  --gray-400: #9CA3AF;
+  --gray-500: #6B7280;
+  --gray-600: #4B5563;
+  --gray-700: #374151;
+  --gray-800: #1F2937;
+  --gray-900: #111827;
+
+  /* Semantic Colors */
+  --background: #FFFFFF;
+  --foreground: #1A202C;
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F9FAFB;
+  --bg-tertiary: #F3F4F6;
+
+  /* Text Colors */
+  --text-primary: #1A202C;
+  --text-secondary: #4A5568;
+  --text-muted: #718096;
+  --text-inverse: #FFFFFF;
+  --text-heading: #1A202C;
+  --text-body: #4A5568;
+
+  /* Border Colors */
+  --border-light: #E2E8F0;
+  --border-medium: #CBD5E0;
+  --border-dark: #A0AEC0;
+
+  /* Chart Colors */
+  --chart-positive: #319795;
+  --chart-negative: #4B5563;
+  --chart-gain-more-5: #285E61;
+  --chart-gain-less-5: rgba(49, 151, 149, 0.6);
+  --chart-no-change: #E2E8F0;
+  --chart-lose-less-5: #9CA3AF;
+  --chart-lose-more-5: #4B5563;
+  --chart-grid: #E2E8F0;
+  --chart-axis: #A0AEC0;
+  --chart-axis-label: #718096;
+  --chart-baseline: #9CA3AF;
+  --chart-reference: #666666;
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: #E2E8F0;
+  --chart-winners-bg: #F0FDFA;
+  --chart-losers-bg: #F9FAFB;
+
+  /* Shadows */
+  --shadow-light: rgba(0, 0, 0, 0.05);
+  --shadow-medium: rgba(0, 0, 0, 0.1);
+
+  /* Status Colors */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --info: #3B82F6;
+}
+
+/* Base Styles */
+body {
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tailwind v4 theme configuration */
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-200: var(--primary-200);
+  --color-primary-300: var(--primary-300);
+  --color-primary-400: var(--primary-400);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-800: var(--primary-800);
+  --color-primary-900: var(--primary-900);
+
+  --color-gray-50: var(--gray-50);
+  --color-gray-100: var(--gray-100);
+  --color-gray-200: var(--gray-200);
+  --color-gray-300: var(--gray-300);
+  --color-gray-400: var(--gray-400);
+  --color-gray-500: var(--gray-500);
+  --color-gray-600: var(--gray-600);
+  --color-gray-700: var(--gray-700);
+  --color-gray-800: var(--gray-800);
+  --color-gray-900: var(--gray-900);
+}

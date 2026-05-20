@@ -1,0 +1,32 @@
+{
+  "gov.states.ga.tax.income.main.flat_rate": {
+    "2026-01-01.2100-12-31": 0.0519
+  },
+  "gov.states.ga.tax.income.deductions.standard.amount.JOINT": {
+    "2026-01-01.2100-12-31": 24000
+  },
+  "gov.states.ga.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+    "2026-01-01.2100-12-31": 24000
+  },
+  "gov.states.ga.tax.income.deductions.standard.amount.SINGLE": {
+    "2026-01-01.2100-12-31": 12000
+  },
+  "gov.states.ga.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+    "2026-01-01.2100-12-31": 12000
+  },
+  "gov.states.ga.tax.income.deductions.standard.amount.SEPARATE": {
+    "2026-01-01.2100-12-31": 12000
+  },
+  "gov.states.ga.tax.income.exemptions.dependent": {
+    "2026-01-01.2100-12-31": 4000
+  },
+  "gov.states.ga.tax.income.agi.exclusions.retirement.cap.older": {
+    "2027-01-01.2100-12-31": 65000
+  },
+  "gov.states.ga.tax.income.agi.exclusions.overtime.cap": {
+    "2026-01-01.2028-12-31": 0
+  },
+  "gov.states.ga.tax.income.agi.exclusions.tips.cap": {
+    "2026-01-01.2028-12-31": 0
+  }
+}
