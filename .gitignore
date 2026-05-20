@@ -3,7 +3,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-ga/
 .pytest_cache/
+
+# PE-US cache artifacts (downloaded by Simulation runs)
+/data/
 
 # Node / Next
 node_modules/

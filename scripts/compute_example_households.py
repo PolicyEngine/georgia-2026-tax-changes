@@ -1,43 +1,46 @@
-"""Pre-compute representative SC households so the household tab can show
+"""Pre-compute representative GA households so the household tab can show
 example impacts without hitting the PE API on page load.
 
-For each profile, runs the current-law sim plus four inverse-reform sims
-(full revert + each provision in isolation: rate brackets, SCIAD, and
-the EITC $200 cap) so the dashboard can attribute the household impact
+For each profile, runs the current-law sim plus the full inverse-reform
+sim plus six per-provision reverts (flat_rate, standard_deduction,
+dependent_exemption, retirement_exclusion, overtime_exclusion,
+tip_exclusion) so the dashboard can attribute the household impact
 to each provision individually. Sweep arrays are computed for each
 variant so the chart can render per-provision lines instantly.
 
-Sign convention: impact = current law (no reform) - pre-2026 (revert
-applied), so positive numbers mean the household gains under the 2026
-changes. ``interaction_residual`` captures the non-additivity from
-tax-math interactions; it equals ``total - (rates + sciad + eitc)``.
+Sign convention: impact = current law (HB463) - pre-HB463 (revert
+applied), so positive numbers mean the household gains under HB463.
+``interaction_residual`` captures the non-additivity from tax-math
+interactions; it equals ``total - sum(provisions)``.
 
 Usage:
     uv run --with requests scripts/compute_example_households.py
 """
 
 import json
-import os
 from pathlib import Path
 
-import requests
+from policyengine_core.reforms import Reform
+from policyengine_us import Simulation
 
-# Allow staging / dev override via env so the script can target a non-
-# prod API without editing the source.
-PE_API = os.environ.get(
-    "PE_API_URL", "https://api.policyengine.org/us/calculate"
-)
 YEAR = 2026
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / "frontend" / "public" / "data" / "example_households.json"
 
+# Three SC-mirrored household profiles, rebased for Georgia. The
+# single-parent profile is rewired to a tipped + overtime-eligible
+# job (server in Georgia) so the new HB463 overtime and tip
+# exclusions actually fire.
 PROFILES = [
     {
-        "label": "Single parent, $35k, 2 kids (EITC range)",
-        "income": 35_000,
+        "label": "Single parent server, $35k wages + $8k tips + $2k overtime, 2 kids",
+        "income": 25_000,  # regular hourly wages
         "age_head": 30,
         "married": False,
         "dependents": [4, 7],
+        "tip_income": 8_000,
+        "fsla_overtime_premium": 2_000,
+        "tip_income_deduction_occupation_requirement_met": True,
     },
     {
         "label": "Married couple, $80k, 1 kid",
@@ -68,50 +71,98 @@ PROFILES = [
 
 # Period covering 2026 forward; reused by every revert override.
 _PERIOD = "2026-01-01.2100-12-31"
+# Overtime + tip exclusions self-repeal end of TY 2028.
+_PERIOD_OVERTIME_TIP = "2026-01-01.2028-12-31"
+# Retirement exclusion bump kicks in TY 2027.
+_PERIOD_RETIREMENT = "2027-01-01.2100-12-31"
 
 
-def _rates_overrides() -> dict:
-    """Revert just the SC rate-bracket schedule to 2025 values."""
+def _flat_rate_overrides() -> dict:
+    """Revert HB463's flat-rate cut: 4.99% (current law) -> 5.19%."""
     return {
-        "gov.states.sc.tax.income.rates[0].rate": {_PERIOD: 0},
-        "gov.states.sc.tax.income.rates[1].threshold": {_PERIOD: 3_560},
-        "gov.states.sc.tax.income.rates[1].rate": {_PERIOD: 0.03},
-        "gov.states.sc.tax.income.rates[2].threshold": {_PERIOD: 17_830},
-        "gov.states.sc.tax.income.rates[2].rate": {_PERIOD: 0.06},
+        "gov.states.ga.tax.income.main.flat_rate": {_PERIOD: 0.0519},
     }
 
 
-def _sciad_overrides() -> dict:
-    """Disable the SCIAD deduction (revert to federal-style deduction)."""
+def _standard_deduction_overrides() -> dict:
+    """Revert HB463's SD bumps: 30k/15k -> 24k/12k by filing status."""
     return {
-        "gov.states.sc.tax.income.deductions.sciad.in_effect": {_PERIOD: False},
+        "gov.states.ga.tax.income.deductions.standard.amount.JOINT": {
+            _PERIOD: 24_000
+        },
+        "gov.states.ga.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+            _PERIOD: 24_000
+        },
+        "gov.states.ga.tax.income.deductions.standard.amount.SINGLE": {
+            _PERIOD: 12_000
+        },
+        "gov.states.ga.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+            _PERIOD: 12_000
+        },
+        "gov.states.ga.tax.income.deductions.standard.amount.SEPARATE": {
+            _PERIOD: 12_000
+        },
     }
 
 
-def _eitc_overrides() -> dict:
-    """Remove the $200 SC EITC cap (effectively uncapped)."""
+def _dependent_exemption_overrides() -> dict:
+    """Revert HB463's dependent-exemption bump: $5,000 -> $4,000."""
     return {
-        "gov.states.sc.tax.income.credits.eitc.max": {_PERIOD: 999_999_999},
+        "gov.states.ga.tax.income.exemptions.dependent": {_PERIOD: 4_000},
+    }
+
+
+def _retirement_exclusion_overrides() -> dict:
+    """Revert HB463's age-65+ retirement exclusion bump (TY 2027+)."""
+    return {
+        "gov.states.ga.tax.income.agi.exclusions.retirement.cap.older": {
+            _PERIOD_RETIREMENT: 65_000
+        },
+    }
+
+
+def _overtime_exclusion_overrides() -> dict:
+    """Revert HB463's new $1,750 overtime exclusion (TY 2026-2028)."""
+    return {
+        "gov.states.ga.tax.income.agi.exclusions.overtime.cap": {
+            _PERIOD_OVERTIME_TIP: 0
+        },
+    }
+
+
+def _tip_exclusion_overrides() -> dict:
+    """Revert HB463's new $1,750 cash tip exclusion (TY 2026-2028)."""
+    return {
+        "gov.states.ga.tax.income.agi.exclusions.tips.cap": {
+            _PERIOD_OVERTIME_TIP: 0
+        },
     }
 
 
 def reform_policy() -> dict:
-    """Full revert: all three provisions reverted simultaneously.
+    """Full revert: all six provisions reverted simultaneously.
 
     Equivalent to ``reform_revert.json`` at the repo root.
     """
     return {
-        **_rates_overrides(),
-        **_sciad_overrides(),
-        **_eitc_overrides(),
+        **_flat_rate_overrides(),
+        **_standard_deduction_overrides(),
+        **_dependent_exemption_overrides(),
+        **_retirement_exclusion_overrides(),
+        **_overtime_exclusion_overrides(),
+        **_tip_exclusion_overrides(),
     }
 
 
-# Provision-only revert variants; each isolates one provision.
+# Per-provision revert variants used for the household-impact attribution.
+# Keys mirror the waterfall PROVISION_ORDER in the frontend.
 PROVISION_OVERRIDES: dict[str, dict] = {
-    "rates": _rates_overrides(),
-    "sciad": _sciad_overrides(),
-    "eitc": _eitc_overrides(),
+    "flat_rate": _flat_rate_overrides(),
+    "standard_deduction": _standard_deduction_overrides(),
+    "dependent_exemption": _dependent_exemption_overrides(),
+    "retirement_exclusion": _retirement_exclusion_overrides(),
+    "overtime_exclusion": _overtime_exclusion_overrides(),
+    "tip_exclusion": _tip_exclusion_overrides(),
 }
 
 
@@ -140,7 +191,13 @@ def build_household(profile: dict, with_axes: bool = False) -> dict:
     }
     # Person-level itemization inputs. NOTE: home_mortgage_interest is
     # routed via the tax-unit-level variables below, not set here.
-    for var in ("real_estate_taxes", "charitable_cash_donations"):
+    for var in (
+        "real_estate_taxes",
+        "charitable_cash_donations",
+        "tip_income",
+        "fsla_overtime_premium",
+        "tip_income_deduction_occupation_requirement_met",
+    ):
         if var in profile:
             you_attrs[var] = {year: profile[var]}
     people: dict = {"you": you_attrs}
@@ -168,7 +225,7 @@ def build_household(profile: dict, with_axes: bool = False) -> dict:
         "members": members,
         "adjusted_gross_income": {year: None},
         "income_tax": {year: None},
-        "sc_income_tax": {year: None},
+        "ga_income_tax": {year: None},
     }
     # Federal mortgage-interest deduction is a tax-unit calculation in
     # PE-US: it needs both the interest paid and the outstanding
@@ -195,7 +252,7 @@ def build_household(profile: dict, with_axes: bool = False) -> dict:
         "households": {
             "your household": {
                 "members": members,
-                "state_code": {year: "SC"},
+                "state_code": {year: "GA"},
                 "household_net_income": {year: None},
             }
         },
@@ -218,37 +275,60 @@ def build_household(profile: dict, with_axes: bool = False) -> dict:
     return situation
 
 
-def calc(situation: dict, policy: dict | None) -> dict:
-    body: dict = {"household": situation}
+def calc(situation: dict, policy: dict | None) -> Simulation:
+    """Build a Simulation from the situation + optional reform overrides.
+
+    Returns the Simulation object directly so callers can pull the
+    variables they need at the entity level. We use direct policyengine
+    calls instead of the public API because HB463 (PR #8306) is merged
+    on master but the live api.policyengine.org service is still on a
+    pre-merge snapshot.
+    """
     if policy:
-        body["policy"] = policy
-    response = requests.post(
-        PE_API, json=body, headers={"Content-Type": "application/json"}, timeout=180
-    )
-    if not response.ok:
-        raise RuntimeError(f"{response.status_code}: {response.text[:500]}")
-    return response.json()["result"]
+        reform = Reform.from_dict(policy, country_id="us")
+        return Simulation(situation=situation, reform=reform)
+    return Simulation(situation=situation)
 
 
-def extract(result: dict) -> dict:
+def extract(sim: Simulation) -> dict:
+    """Pull the single-point values (no axes) from a Simulation."""
     yr = str(YEAR)
-    hh = result["households"]["your household"]
-    tu = result["tax_units"]["your tax unit"]
     return {
-        "household_net_income": hh["household_net_income"][yr],
-        "sc_income_tax": tu["sc_income_tax"][yr],
-        "income_tax": tu["income_tax"][yr],
+        "household_net_income": float(
+            sim.calculate("household_net_income", yr, map_to="household")[0]
+        ),
+        "ga_income_tax": float(
+            sim.calculate("ga_income_tax", yr, map_to="tax_unit")[0]
+        ),
+        "income_tax": float(
+            sim.calculate("income_tax", yr, map_to="tax_unit")[0]
+        ),
     }
 
 
-def _sweep_arrays(result: dict) -> dict:
-    """Pull the three sweep arrays we need from a /us/calculate response."""
+def _sweep_arrays(sim: Simulation) -> dict:
+    """Pull the sweep arrays from a Simulation built with an axis.
+
+    All arrays are aggregated to the household level so they have a
+    consistent length (= axis count). ``income_range`` sums
+    ``employment_income`` over household members, which equals the
+    head's wages since only ``you`` has employment income in our
+    profiles.
+    """
     yr = str(YEAR)
     return {
-        "income_range": result["people"]["you"]["employment_income"][yr],
-        "net_income": result["households"]["your household"]["household_net_income"][yr],
-        "state_tax": result["tax_units"]["your tax unit"]["sc_income_tax"][yr],
-        "income_tax": result["tax_units"]["your tax unit"]["income_tax"][yr],
+        "income_range": sim.calculate(
+            "employment_income", yr, map_to="household"
+        ).tolist(),
+        "net_income": sim.calculate(
+            "household_net_income", yr, map_to="household"
+        ).tolist(),
+        "state_tax": sim.calculate(
+            "ga_income_tax", yr, map_to="household"
+        ).tolist(),
+        "income_tax": sim.calculate(
+            "income_tax", yr, map_to="household"
+        ).tolist(),
     }
 
 
@@ -284,7 +364,7 @@ def compute_profile(profile: dict) -> dict:
     income_change_total = (
         base_pt["household_net_income"] - full_pt["household_net_income"]
     )
-    sc_change_total = base_pt["sc_income_tax"] - full_pt["sc_income_tax"]
+    ga_change_total = base_pt["ga_income_tax"] - full_pt["ga_income_tax"]
     fed_change_total = base_pt["income_tax"] - full_pt["income_tax"]
 
     # Per-provision point impacts at the user's income.
@@ -295,7 +375,7 @@ def compute_profile(profile: dict) -> dict:
                 base_pt["household_net_income"] - pt["household_net_income"]
             ),
             "state_tax_change": (
-                base_pt["sc_income_tax"] - pt["sc_income_tax"]
+                base_pt["ga_income_tax"] - pt["ga_income_tax"]
             ),
             "federal_tax_change": (
                 base_pt["income_tax"] - pt["income_tax"]
@@ -329,7 +409,7 @@ def compute_profile(profile: dict) -> dict:
         )
     ]
 
-    # Top-level chart arrays (kept for backward compatibility).
+    # Top-level chart arrays (kept for backward compatibility with SC layout).
     chart = {
         "income_range": base_sweep["income_range"],
         "net_income_change": _diff(base_sweep["net_income"], full_sweep["net_income"]),
@@ -344,15 +424,13 @@ def compute_profile(profile: dict) -> dict:
         "baseline": base_pt,
         "reform": full_pt,
         "net_income_change": income_change_total,
-        "sc_tax_change": sc_change_total,
+        "ga_tax_change": ga_change_total,
         "federal_tax_change": fed_change_total,
         "chart": chart,
         "provisions": {
             **provisions_pt,
             "interaction_residual": {
                 "net_income_change": interaction_residual_pt,
-                # Residual on the tax components is rarely meaningful;
-                # keep state/federal at the chart level only.
             },
         },
         "provisions_chart": {
@@ -367,24 +445,23 @@ def compute_profile(profile: dict) -> dict:
 def _validate_sign_convention(rows: list[dict]) -> None:
     """Fail loud if the baseline/revert sign convention got flipped.
 
-    Pre-2026 SC had a 6% top rate vs current law's 5.21%, so reverting
-    only the rate schedule must *raise* state tax (negative
+    Pre-HB463 GA had a 5.19% flat rate vs current law's 4.99%, so
+    reverting only the flat rate must *raise* state tax (negative
     state_tax_change in our convention) for any household with non-zero
-    SC liability. If the wiring ever inverts, the entire dashboard
-    reads backwards — catch it before we ship a broken JSON.
+    GA liability. Catch sign flips before we ship a broken JSON.
     """
     for row in rows:
-        rates = row.get("provisions", {}).get("rates", {})
-        # Households below the SC filing threshold have $0 liability
+        rate = row.get("provisions", {}).get("flat_rate", {})
+        # Households below the GA filing threshold have $0 liability
         # either way and don't constrain the check.
-        if abs(rates.get("state_tax_change", 0)) < 1:
+        if abs(rate.get("state_tax_change", 0)) < 1:
             continue
-        if rates["state_tax_change"] >= 0:
+        if rate["state_tax_change"] >= 0:
             raise SystemExit(
                 f"Sign-convention check failed for {row['label']}: "
-                f"rates-only revert produced state_tax_change="
-                f"{rates['state_tax_change']:.2f} but pre-2026 6% top "
-                f"rate should raise SC tax (negative under "
+                f"flat_rate-only revert produced state_tax_change="
+                f"{rate['state_tax_change']:.2f} but pre-HB463 5.19% "
+                f"rate should raise GA tax (negative under "
                 f"baseline-minus-revert). Did baseline and revert get "
                 f"swapped?"
             )
