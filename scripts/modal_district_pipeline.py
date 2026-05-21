@@ -27,13 +27,12 @@ VARIANT = "revert"
 # Modal app definition
 app = modal.App("georgia-2026-tax-changes-district-pipeline")
 
-# Image with policyengine-us and dependencies. HB463 (PR #8306) was
-# merged on main 2026-05-20; the PyPI release that ships it must be
-# pinned here once it's out (>=1.701 at time of writing).
+# Image with policyengine-us and dependencies. PE-US 1.702.1 (released
+# 2026-05-21) is the first PyPI build that includes HB463 / PR #8306.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "policyengine-us>=1.150.0",
+        "policyengine-us>=1.702.1",
         "numpy>=1.24.0",
         "pandas>=2.0.0",
         "huggingface_hub",

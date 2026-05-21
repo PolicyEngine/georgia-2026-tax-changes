@@ -185,22 +185,88 @@ def calculate_district(district_id: str, year: int) -> dict | None:
         return None
 
 
+def _worker(arg: tuple[str, int]) -> dict | None:
+    """ProcessPool entrypoint: each worker imports PE-US fresh, which
+    is fine because the imports are cached on Python startup and each
+    Microsimulation already pays its own dataset-load cost.
+    """
+    district_id, year = arg
+    return calculate_district(district_id, year)
+
+
 def main() -> None:
+    """Parallel district sims via subprocess workers.
+
+    14 districts × 3 years serially takes ~45 min because each sim
+    spins up a fresh PE-US TaxBenefitSystem + downloads/loads the
+    district h5. Running with a small ProcessPool (default 4 workers)
+    overlaps the dataset loads and pulls wall-clock down by ~3-4x.
+    Each PE-US sim uses ~1-2 GB RAM, so cap workers tight.
+    """
+    import argparse
+    from concurrent.futures import ProcessPoolExecutor
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel district sims (default 4). Set 1 for sequential.",
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        action="append",
+        help="Subset of years to run (default 2026 2027 2028). May be given multiple times.",
+    )
+    args = parser.parse_args()
+
+    years_to_run = args.year if args.year else list(YEARS)
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tasks = [
+        (f"{GA_STATE}-{d:02d}", y)
+        for y in years_to_run
+        for d in GA_DISTRICTS
+    ]
+    print(
+        f"Running {len(tasks)} district-years with {args.workers} workers...",
+        flush=True,
+    )
+
     rows: list[dict] = []
-    for year in YEARS:
-        print(f"\n=== Year {year} ===", flush=True)
-        for d in GA_DISTRICTS:
-            district_id = f"{GA_STATE}-{d:02d}"
-            row = calculate_district(district_id, year)
-            if row is not None:
-                rows.append(row)
+    if args.workers <= 1:
+        for t in tasks:
+            r = _worker(t)
+            if r is not None:
+                rows.append(r)
+    else:
+        with ProcessPoolExecutor(max_workers=args.workers) as pool:
+            for r in pool.map(_worker, tasks):
+                if r is not None:
+                    rows.append(r)
 
     if not rows:
         print("ERROR: no district rows produced", flush=True)
         return
 
-    df = pd.DataFrame(rows)
+    # Merge with any existing CSV so partial reruns are non-destructive.
+    if OUTPUT_PATH.exists():
+        try:
+            existing = pd.read_csv(OUTPUT_PATH)
+            new_keys = {(r["district"], r["year"]) for r in rows}
+            existing = existing[
+                ~existing.apply(
+                    lambda r: (r["district"], r["year"]) in new_keys,
+                    axis=1,
+                )
+            ]
+            df = pd.concat([existing, pd.DataFrame(rows)], ignore_index=True)
+        except Exception:
+            df = pd.DataFrame(rows)
+    else:
+        df = pd.DataFrame(rows)
+
     df = df.sort_values(["year", "district"]).reset_index(drop=True)
     df.to_csv(OUTPUT_PATH, index=False)
     print(f"\nSaved {len(df)} rows -> {OUTPUT_PATH}", flush=True)
