@@ -468,10 +468,20 @@ export default function AggregateImpact({ triggered }: Props) {
           return 10 * mag;
         })();
         const povNiceMax = Math.ceil(povMaxAbs / povNiceStep) * povNiceStep;
-        const povDomain: [number, number] = [-povNiceMax, povNiceMax];
+        // Collapse the y-axis to the side the data actually occupies.
+        // HB463 reduces poverty, so all four bars go negative and the
+        // top half of a symmetric axis is dead space.
+        const hasPositive = povertyData.some((d) => d.value > 0);
+        const hasNegative = povertyData.some((d) => d.value < 0);
+        const povDomain: [number, number] = hasPositive && !hasNegative
+          ? [0, povNiceMax]
+          : hasNegative && !hasPositive
+            ? [-povNiceMax, 0]
+            : [-povNiceMax, povNiceMax];
+        const tickCount = Math.round((povDomain[1] - povDomain[0]) / povNiceStep) + 1;
         const povTicks = Array.from(
-          { length: Math.round((2 * povNiceMax) / povNiceStep) + 1 },
-          (_, i) => -povNiceMax + i * povNiceStep,
+          { length: tickCount },
+          (_, i) => povDomain[0] + i * povNiceStep,
         );
 
         return (

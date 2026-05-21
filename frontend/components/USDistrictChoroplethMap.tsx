@@ -357,7 +357,7 @@ export default function GADistrictChoroplethMap({
             style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
           >
             <p className="font-semibold text-gray-900">
-              SC-{String(tooltip.districtNum).padStart(2, '0')}
+              GA-{String(tooltip.districtNum).padStart(2, '0')}
             </p>
             {tooltip.representative && (
               <p className="text-gray-600">{tooltip.representative}</p>
