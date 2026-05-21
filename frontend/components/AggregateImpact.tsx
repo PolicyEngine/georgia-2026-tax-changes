@@ -94,7 +94,9 @@ export default function AggregateImpact({ triggered }: Props) {
         <h3 className="text-gray-800 font-semibold mb-2">Georgia impact data not yet available</h3>
         <p className="text-gray-600 font-medium mb-2">{errorMessage}</p>
         <p className="text-sm text-gray-500 mt-4">
-          Precomputed data has not been generated yet. Run: <code>python scripts/pipeline.py</code>
+          Precomputed data has not been generated yet. Run the Modal
+          precompute (<code>modal run scripts/modal_pipeline.py</code>) once
+          policyengine-us PR #8306 is published to PyPI.
         </p>
       </div>
     );

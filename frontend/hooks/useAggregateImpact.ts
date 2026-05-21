@@ -47,6 +47,18 @@ function buildAggregateResponse(year: number): Promise<AggregateImpactResponse> 
     const wl = winnersLosers.filter((r) => r.year === year);
     const ib = incomeBrackets.filter((r) => r.year === year);
 
+    // Until the Modal precompute lands, the CSV stubs are header-only.
+    // Surface a clean error so the UI shows its "data not yet
+    // available" panel instead of crashing on undefined.
+    if (met.length === 0 || wl.length === 0 || dist.length === 0) {
+      throw new Error(
+        `Precomputed aggregate data for ${year} is not yet available. ` +
+          `Run the Modal precompute to populate metrics_revert.csv, ` +
+          `winners_losers_revert.csv, distributional_impact_revert.csv, ` +
+          `and income_brackets_revert.csv.`,
+      );
+    }
+
     // Build metrics lookup
     const m = Object.fromEntries(met.map((r) => [r.metric, r.value as number]));
 
@@ -59,7 +71,12 @@ function buildAggregateResponse(year: number): Promise<AggregateImpactResponse> 
     }
 
     // Build intra-decile
-    const allRow = wl.find((r) => r.decile === "All")!;
+    const allRow = wl.find((r) => r.decile === "All");
+    if (!allRow) {
+      throw new Error(
+        `winners_losers_revert.csv is missing the "All" row for ${year}.`,
+      );
+    }
     const intraAll: IntraDecileAll = {
       gain_more_than_5pct: allRow.gain_more_5pct as number,
       gain_less_than_5pct: allRow.gain_less_5pct as number,
