@@ -65,10 +65,10 @@ interface Props {
   triggered: boolean;
 }
 
-// HB463 covers TY 2026 (rate cut, SD/dep exemption, overtime/tip
-// exclusions) through TY 2028 (overtime/tip exclusions sunset). The
-// retirement-exclusion bump first applies TY 2027.
-const GA_YEARS = [2026, 2027, 2028] as const;
+// Statewide aggregates are precomputed for TY 2026 (rate cut + SD +
+// dep exemption + overtime/tip exclusions) and TY 2027 (the
+// retirement-exclusion bump). TY 2028 isn't surfaced statewide.
+const GA_YEARS = [2026, 2027] as const;
 type GAYear = (typeof GA_YEARS)[number];
 
 export default function AggregateImpact({ triggered }: Props) {

@@ -28,10 +28,11 @@ DEFAULT_OUTPUT_DIR = os.path.join(
     "data",
 )
 
-# HB463 spans TY 2026-2028 (overtime/tip exclusions self-repeal end
-# of TY 2028; the age-65+ retirement-exclusion bump takes effect TY
-# 2027). Run the full window so the dashboard can show per-year impact.
-YEARS = [2026, 2027, 2028]
+# Statewide aggregates ship TY 2026 (rate cut + SD + dep exemption +
+# overtime/tip exclusions) and TY 2027 (adds the retirement-exclusion
+# bump). TY 2028 isn't surfaced statewide; districts run the full
+# 2026-2028 window separately.
+YEARS = [2026, 2027]
 
 
 def _save_csv(df: pd.DataFrame, path: str) -> None:

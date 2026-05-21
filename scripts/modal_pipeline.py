@@ -38,9 +38,10 @@ image = (
     )
 )
 
-# HB463 spans TY 2026-2028 (overtime/tip caps self-repeal end of TY
-# 2028; the age-65+ retirement-exclusion bump first applies TY 2027).
-YEARS = [2026, 2027, 2028]
+# Statewide aggregates ship TY 2026 + TY 2027 only. TY 2028 (last
+# year of the overtime/tip exclusions) is computed at the district
+# level but not surfaced in the statewide dashboard.
+YEARS = [2026, 2027]
 
 # Georgia state dataset on HuggingFace
 GA_DATASET = "hf://policyengine/policyengine-us-data/states/GA.h5"
