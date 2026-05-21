@@ -65,9 +65,14 @@ interface Props {
   triggered: boolean;
 }
 
+// HB463 covers TY 2026 (rate cut, SD/dep exemption, overtime/tip
+// exclusions) through TY 2028 (overtime/tip exclusions sunset). The
+// retirement-exclusion bump first applies TY 2027.
+const GA_YEARS = [2026, 2027, 2028] as const;
+type GAYear = (typeof GA_YEARS)[number];
+
 export default function AggregateImpact({ triggered }: Props) {
-  // Year is locked to 2026 for the Georgia 2026 tax changes (HB463) dashboard.
-  const selectedYear = GA_DASHBOARD_YEAR;
+  const [selectedYear, setSelectedYear] = useState<GAYear>(GA_DASHBOARD_YEAR as GAYear);
   const { data, isLoading, error } = useAggregateImpact(triggered, selectedYear);
   const [activeSection, setActiveSection] = useState<
     'fiscal' | 'distributional' | 'winners' | 'poverty'
@@ -131,8 +136,28 @@ export default function AggregateImpact({ triggered }: Props) {
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-primary">Georgia impact analysis</h2>
       <p className="text-sm text-gray-600">
-        Comparing current law ({GA_DASHBOARD_YEAR}, HB463) to pre-HB463 baseline
+        Comparing current law ({selectedYear}, HB463) to pre-HB463 baseline
       </p>
+
+      {/* Year selector — HB463 spans TY 2026-2028. Retirement-exclusion
+          bump starts TY 2027; overtime/tip exclusions sunset end of
+          TY 2028. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-gray-700 font-medium">Tax year:</span>
+        {GA_YEARS.map((year) => (
+          <button
+            key={year}
+            onClick={() => setSelectedYear(year)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              selectedYear === year
+                ? 'bg-primary-500 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {year}
+          </button>
+        ))}
+      </div>
 
       {/* Sub-navigation */}
       <div className="flex flex-wrap gap-2">
