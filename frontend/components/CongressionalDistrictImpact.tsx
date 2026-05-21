@@ -23,7 +23,7 @@ const GA_REPRESENTATIVES: Record<string, { name: string; party: 'R' | 'D' }> = {
   '11': { name: 'Barry Loudermilk', party: 'R' },
   '12': { name: 'Rick Allen', party: 'R' },
   '13': { name: 'David Scott', party: 'D' },
-  '14': { name: 'Marjorie Taylor Greene', party: 'R' },
+  '14': { name: 'Clay Fuller', party: 'R' },
 };
 
 function partyColor(party: 'R' | 'D' | undefined) {

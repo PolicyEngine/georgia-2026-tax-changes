@@ -50,7 +50,7 @@ const GA_REPRESENTATIVES: Record<string, string> = {
   '11': 'Barry Loudermilk',
   '12': 'Rick Allen',
   '13': 'David Scott',
-  '14': 'Marjorie Taylor Greene',
+  '14': 'Clay Fuller',
 };
 
 const formatSignedCurrency = (value: number) => {
