@@ -1,8 +1,8 @@
-"""Aggregate impact calculations for the South Carolina 2026 tax changes.
+"""Aggregate impact calculations for the Georgia 2026 tax changes (HB463).
 
-PolicyEngine-US current law already includes H.4216 (Act 110). This
-module compares current law to an inverse reform that restores the
-pre-2026 (2025) parameters, so impact is ``current_law - pre_2026``.
+PolicyEngine-US current law already includes HB463. This module
+compares current law to an inverse reform that restores the pre-HB463
+parameters, so impact is ``current_law - pre_hb463``.
 """
 
 import numpy as np
@@ -11,8 +11,8 @@ from policyengine_us import Microsimulation
 from .reforms import create_ga_reverted_reform
 
 
-# South Carolina state-level dataset on HuggingFace.
-SC_DATASET = "hf://policyengine/policyengine-us-data/states/SC.h5"
+# Georgia state-level dataset on HuggingFace.
+GA_DATASET = "hf://policyengine/policyengine-us-data/states/GA.h5"
 
 # Intra-decile bounds and labels (same as app-v2)
 _INTRA_BOUNDS = [-np.inf, -0.05, -1e-3, 1e-3, 0.05, np.inf]
@@ -28,11 +28,11 @@ _INTRA_LABELS = [
 def _poverty_metrics(baseline_rate: float, reform_rate: float):
     """Return rate change and percent change for a poverty metric.
 
-    ``baseline_rate`` is the pre-2026 rate (sim with reform applied);
-    ``reform_rate`` is the current-law rate (sim with no reform). The
-    returned change matches the income-impact sign convention: positive
-    when current law improves the metric for households (i.e. reduces
-    poverty).
+    ``baseline_rate`` is the pre-HB463 rate (sim with revert reform
+    applied); ``reform_rate`` is the current-law rate (sim with no
+    reform). The returned change matches the income-impact sign
+    convention: positive when current law improves the metric for
+    households (i.e. reduces poverty).
     """
     rate_change = baseline_rate - reform_rate
     percent_change = (
@@ -42,7 +42,7 @@ def _poverty_metrics(baseline_rate: float, reform_rate: float):
 
 
 def calculate_aggregate_impact(year: int = 2026) -> dict:
-    """Calculate the South Carolina aggregate impact of H.4216 (Act 110).
+    """Calculate the Georgia aggregate impact of HB463.
 
     Args:
         year: Tax year (default 2026).
@@ -50,23 +50,23 @@ def calculate_aggregate_impact(year: int = 2026) -> dict:
     Returns:
         Dictionary with budget, decile, intra_decile, poverty, and
         income-bracket fields. All money amounts are current law minus
-        pre-2026 law.
+        pre-HB463 law.
     """
     reform = create_ga_reverted_reform()
 
-    # Baseline = pre-2026 parameters. Reform = current law.
-    sim_baseline = Microsimulation(dataset=SC_DATASET, reform=reform)
-    sim_reform = Microsimulation(dataset=SC_DATASET)
+    # Baseline = pre-HB463 parameters. Reform = current law.
+    sim_baseline = Microsimulation(dataset=GA_DATASET, reform=reform)
+    sim_reform = Microsimulation(dataset=GA_DATASET)
 
     # ===== FISCAL IMPACT =====
-    # South Carolina state income tax
-    sc_baseline = sim_baseline.calculate(
-        "sc_income_tax", period=year, map_to="household"
+    # Georgia state income tax
+    ga_baseline = sim_baseline.calculate(
+        "ga_income_tax", period=year, map_to="household"
     )
-    sc_reform = sim_reform.calculate(
-        "sc_income_tax", period=year, map_to="household"
+    ga_reform = sim_reform.calculate(
+        "ga_income_tax", period=year, map_to="household"
     )
-    state_tax_revenue_impact = float((sc_reform - sc_baseline).sum())
+    state_tax_revenue_impact = float((ga_reform - ga_baseline).sum())
 
     # Federal income tax
     fed_baseline = sim_baseline.calculate(

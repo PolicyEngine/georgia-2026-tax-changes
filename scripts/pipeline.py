@@ -1,7 +1,7 @@
-"""Data generation pipeline for the South Carolina 2026 tax changes dashboard.
+"""Data generation pipeline for the Georgia 2026 tax changes (HB463) dashboard.
 
-Runs the ga_tax_calc microsimulation for tax year 2026 against the
-South Carolina state dataset and saves output to frontend/public/data/
+Runs the ga_tax_calc microsimulation for tax years 2026-2028 against
+the Georgia state dataset and saves output to frontend/public/data/
 as CSVs.
 
 Uses subprocess isolation per year to prevent memory accumulation
@@ -28,9 +28,10 @@ DEFAULT_OUTPUT_DIR = os.path.join(
     "data",
 )
 
-# South Carolina 2026 tax changes only take effect in 2026 — no
-# budget-window sweep.
-YEARS = [2026]
+# HB463 spans TY 2026-2028 (overtime/tip exclusions self-repeal end
+# of TY 2028; the age-65+ retirement-exclusion bump takes effect TY
+# 2027). Run the full window so the dashboard can show per-year impact.
+YEARS = [2026, 2027, 2028]
 
 
 def _save_csv(df: pd.DataFrame, path: str) -> None:

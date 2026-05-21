@@ -34,9 +34,9 @@ def main():
     year = int(sys.argv[1])
     from ga_tax_calc.microsimulation import calculate_aggregate_impact
 
-    print(f"  Computing South Carolina 2026 tax changes for {year}...", file=sys.stderr)
+    print(f"  Computing Georgia 2026 tax changes (HB463) for {year}...", file=sys.stderr)
     result = calculate_aggregate_impact(year=year)
-    print(f"  Done: South Carolina 2026 tax changes {year}", file=sys.stderr)
+    print(f"  Done: Georgia 2026 tax changes (HB463) {year}", file=sys.stderr)
 
     # Output JSON to stdout
     json.dump(_convert_for_json(result), sys.stdout)
