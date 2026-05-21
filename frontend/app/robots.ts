@@ -6,6 +6,6 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
     },
-    sitemap: 'https://policyengine.org/us/south-carolina-2026-tax-changes/sitemap.xml',
+    sitemap: 'https://policyengine.org/us/georgia-2026-tax-changes/sitemap.xml',
   };
 }

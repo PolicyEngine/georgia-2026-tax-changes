@@ -2,30 +2,30 @@ import { useQuery } from "@tanstack/react-query";
 import parseCSV from "@/lib/parseCSV";
 import { AggregateImpactResponse, IntraDecileAll, IntraDecileDeciles } from "@/lib/types";
 
-// South Carolina 2026 tax changes dashboard — year is locked to 2026 throughout.
-export const SC_DASHBOARD_YEAR = 2026;
+// Georgia 2026 tax changes (HB463) dashboard — year is locked to 2026 throughout.
+export const GA_DASHBOARD_YEAR = 2026;
 
 async function fetchCSV(filename: string): Promise<Record<string, string | number>[]> {
   // Use same default as next.config.js
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH !== undefined
     ? process.env.NEXT_PUBLIC_BASE_PATH
-    : "/us/south-carolina-2026-tax-changes";
+    : "/us/georgia-2026-tax-changes";
   const res = await fetch(`${basePath}/data/${filename}`);
   if (!res.ok) throw new Error(`Failed to load ${filename}`);
   const text = await res.text();
   return parseCSV(text);
 }
 
-// Fetch the national congressional_districts.csv and filter to South Carolina (state="SC").
-// Shared by components that need district-level numbers for the South Carolina 2026
-// tax changes dashboard.
-export function useSCDistrictImpact(enabled: boolean, year: number = SC_DASHBOARD_YEAR) {
+// Fetch the national congressional_districts.csv and filter to Georgia (state="GA").
+// Shared by components that need district-level numbers for the Georgia 2026
+// tax changes (HB463) dashboard.
+export function useGADistrictImpact(enabled: boolean, year: number = GA_DASHBOARD_YEAR) {
   return useQuery<Record<string, string | number>[]>({
-    queryKey: ["scDistrictImpact", year],
+    queryKey: ["gaDistrictImpact", year],
     queryFn: async () => {
       const rows = await fetchCSV("congressional_districts_revert.csv");
       return rows.filter(
-        (r) => r.state === "SC" && Number(r.year) === year,
+        (r) => r.state === "GA" && Number(r.year) === year,
       );
     },
     enabled,

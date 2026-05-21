@@ -17,7 +17,13 @@ export interface BenefitAtIncome {
   net_income_change: number;
 }
 
-export type ProvisionKey = 'rates' | 'sciad' | 'eitc';
+export type ProvisionKey =
+  | 'flat_rate'
+  | 'standard_deduction'
+  | 'dependent_exemption'
+  | 'retirement_exclusion'
+  | 'overtime_exclusion'
+  | 'tip_exclusion';
 
 export interface ProvisionPointImpact {
   net_income_change: number;
@@ -31,19 +37,17 @@ export interface ProvisionChartImpact {
   federal_tax_change?: number[];
 }
 
-export interface ProvisionsAtIncome {
-  rates: ProvisionPointImpact;
-  sciad: ProvisionPointImpact;
-  eitc: ProvisionPointImpact;
+export type ProvisionsAtIncome = {
+  [K in ProvisionKey]: ProvisionPointImpact;
+} & {
   interaction_residual?: ProvisionPointImpact;
-}
+};
 
-export interface ProvisionsChart {
-  rates: ProvisionChartImpact;
-  sciad: ProvisionChartImpact;
-  eitc: ProvisionChartImpact;
+export type ProvisionsChart = {
+  [K in ProvisionKey]: ProvisionChartImpact;
+} & {
   interaction_residual?: ProvisionChartImpact;
-}
+};
 
 export interface HouseholdImpactResponse {
   income_range: number[];

@@ -9,26 +9,6 @@ import CongressionalDistrictImpact from '@/components/CongressionalDistrictImpac
 import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
 import { parseHashParams } from '@/lib/embedding';
 
-const US_STATES = [
-  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
-  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'DC', name: 'District of Columbia' }, { code: 'FL', name: 'Florida' },
-  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
-  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
-  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
-  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
-  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
-  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
-  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
-];
-
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'policy' | 'impact' | 'aggregate' | 'districts'>('policy');
 
@@ -105,13 +85,13 @@ function HouseholdImpactTab() {
   // Initialize state from hash parameters if present
   const getInitialValues = () => {
     if (typeof window === 'undefined') {
-      return { income: 50000, age: 35, state: 'SC', married: false, dependents: [5] };
+      return { income: 50000, age: 35, state: 'GA', married: false, dependents: [5] };
     }
     const params = parseHashParams(window.location.hash);
     return {
       income: params.income ?? 50000,
       age: params.age ?? 35,
-      state: params.state ?? 'SC',
+      state: params.state ?? 'GA',
       married: params.married ?? false,
       dependents: params.dependents ?? [5],
     };
@@ -221,7 +201,7 @@ function HouseholdImpactTab() {
     setAgeSpouse(profile.married ? 35 : null);
     setAgeSpouseRaw('35');
     setDependentAges(profile.dependents);
-    setStateCode('SC');
+    setStateCode('GA');
     const exampleMaxEarnings = response.x_axis_max ?? maxEarnings;
     setMaxEarnings(exampleMaxEarnings);
     setSubmittedRequest({
@@ -231,7 +211,7 @@ function HouseholdImpactTab() {
       income: profile.income,
       year: 2026,
       max_earnings: exampleMaxEarnings,
-      state_code: 'SC',
+      state_code: 'GA',
     });
     setPrecomputedImpact(response);
     setTriggered(true);

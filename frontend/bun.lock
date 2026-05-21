@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "south-carolina-2026-tax-changes-calculator",
+      "name": "georgia-2026-tax-changes-calculator",
       "dependencies": {
         "@policyengine/ui-kit": "^0.9.0",
         "@tanstack/react-query": "^5.17.9",

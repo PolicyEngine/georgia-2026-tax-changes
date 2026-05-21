@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type {
   HouseholdImpactResponse,
+  ProvisionKey,
   ProvisionsAtIncome,
   ProvisionsChart,
 } from '@/lib/types';
@@ -16,6 +17,9 @@ export interface ExampleHouseholdProfile {
   real_estate_taxes?: number;
   home_mortgage_interest?: number;
   charitable_cash_donations?: number;
+  tip_income?: number;
+  fsla_overtime_premium?: number;
+  tip_income_deduction_occupation_requirement_met?: boolean;
 }
 
 interface ChartArrays {
@@ -28,16 +32,16 @@ interface ChartArrays {
 interface ExampleHousehold extends ExampleHouseholdProfile {
   baseline: {
     household_net_income: number;
-    sc_income_tax: number;
+    ga_income_tax: number;
     income_tax: number;
   };
   reform: {
     household_net_income: number;
-    sc_income_tax: number;
+    ga_income_tax: number;
     income_tax: number;
   };
   net_income_change: number;
-  sc_tax_change: number;
+  ga_tax_change: number;
   federal_tax_change?: number;
   chart: ChartArrays;
   provisions?: ProvisionsAtIncome;
@@ -59,19 +63,35 @@ const fmtSigned = (v: number) => {
   return base;
 };
 
-/** PE-palette colors for the three SC provisions. Used both on the
- *  card breakdown rows and on the "By provision" chart lines. */
-export const PROVISION_COLORS = {
-  rates: 'var(--primary-500)',     // SC primary teal
-  sciad: 'var(--primary-800)',     // dark teal
-  eitc: 'var(--gray-600)',         // neutral gray (often negative)
-} as const;
+/** PE-palette colors for the six HB463 provisions plus interaction
+ *  residual. Used both on the card breakdown rows and on the
+ *  "By provision" chart lines. */
+export const PROVISION_COLORS: Record<ProvisionKey, string> = {
+  flat_rate: 'var(--primary-500)',
+  standard_deduction: 'var(--primary-800)',
+  dependent_exemption: 'var(--secondary-500)',
+  retirement_exclusion: 'var(--tertiary-500)',
+  overtime_exclusion: 'var(--warning-500)',
+  tip_exclusion: 'var(--gray-600)',
+};
 
-export const PROVISION_LABELS = {
-  rates: 'Rate brackets',
-  sciad: 'SCIAD deduction',
-  eitc: 'EITC cap',
-} as const;
+export const PROVISION_LABELS: Record<ProvisionKey, string> = {
+  flat_rate: 'Flat rate cut (5.19% → 4.99%)',
+  standard_deduction: 'Higher standard deduction',
+  dependent_exemption: 'Higher dependent exemption',
+  retirement_exclusion: 'Retirement exclusion bump (2027+)',
+  overtime_exclusion: 'New overtime exclusion',
+  tip_exclusion: 'New tip exclusion',
+};
+
+const PROVISION_ORDER: ProvisionKey[] = [
+  'flat_rate',
+  'standard_deduction',
+  'dependent_exemption',
+  'retirement_exclusion',
+  'overtime_exclusion',
+  'tip_exclusion',
+];
 
 /** Build a HouseholdImpactResponse-shaped payload from one of the
  *  precomputed example records, so the existing ImpactAnalysis chart
@@ -90,7 +110,7 @@ function toImpactResponse(h: ExampleHousehold): HouseholdImpactResponse {
       reform: h.reform.household_net_income,
       difference: h.net_income_change,
       federal_tax_change: federalTaxChange,
-      state_tax_change: h.sc_tax_change,
+      state_tax_change: h.ga_tax_change,
       net_income_change: h.net_income_change,
     },
     x_axis_max: xMax,
@@ -122,7 +142,7 @@ export default function ExampleHouseholds({
     const basePath =
       process.env.NEXT_PUBLIC_BASE_PATH !== undefined
         ? process.env.NEXT_PUBLIC_BASE_PATH
-        : '/us/south-carolina-2026-tax-changes';
+        : '/us/georgia-2026-tax-changes';
     fetch(`${basePath}/data/example_households.json`)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to load (${res.status})`);
@@ -143,7 +163,7 @@ export default function ExampleHouseholds({
       <p className="text-sm text-gray-600 mb-3">
         Click an example to load its profile into the calculator and render its
         net-income chart instantly. The breakdown attributes the impact to each
-        of Act 110&apos;s three provisions.
+        of HB463&apos;s six provisions.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {data.households.map((h, i) => {
@@ -164,6 +184,10 @@ export default function ExampleHouseholds({
                     real_estate_taxes: h.real_estate_taxes,
                     home_mortgage_interest: h.home_mortgage_interest,
                     charitable_cash_donations: h.charitable_cash_donations,
+                    tip_income: h.tip_income,
+                    fsla_overtime_premium: h.fsla_overtime_premium,
+                    tip_income_deduction_occupation_requirement_met:
+                      h.tip_income_deduction_occupation_requirement_met,
                   },
                   toImpactResponse(h),
                 )
@@ -197,41 +221,48 @@ export default function ExampleHouseholds({
               )}
 
               <TaxChannelBreakdown
-                scTaxChange={h.sc_tax_change}
+                gaTaxChange={h.ga_tax_change}
                 federalTaxChange={h.federal_tax_change ?? 0}
               />
 
               <p className="text-xs text-gray-500 mt-2 leading-5">
-                SC tax: {fmtCurrency(h.reform.sc_income_tax)} →{' '}
-                {fmtCurrency(h.baseline.sc_income_tax)}
+                GA tax: {fmtCurrency(h.reform.ga_income_tax)} →{' '}
+                {fmtCurrency(h.baseline.ga_income_tax)}
               </p>
             </button>
           );
         })}
       </div>
       <p className="text-[11px] text-gray-500 italic mt-2">
-        Income change is current law (2026) minus pre-2026 (Act 110 reverted).
+        Income change is current law (HB463, 2026) minus pre-HB463 baseline.
         Single parent files head of household. Married couples file jointly
         with the spouse aged 35. The itemizer profile carries $12k property
-        tax, $20k mortgage interest, and $5k charitable to trigger SCAID.
+        tax, $20k mortgage interest, and $5k charitable to trigger federal
+        SALT and itemized deductions.
       </p>
     </div>
   );
 }
 
 function ProvisionBreakdown({ provisions }: { provisions: ProvisionsAtIncome }) {
-  const rows: { key: keyof typeof PROVISION_LABELS; value: number }[] = [
-    { key: 'rates', value: provisions.rates.net_income_change },
-    { key: 'sciad', value: provisions.sciad.net_income_change },
-    { key: 'eitc', value: provisions.eitc.net_income_change },
-  ];
+  const rows = PROVISION_ORDER.map((key) => ({
+    key,
+    value: provisions[key]?.net_income_change ?? 0,
+  })).filter(({ value }) => Math.abs(value) >= 1);
+
   const residual = provisions.interaction_residual?.net_income_change ?? 0;
   const showResidual = Math.abs(residual) >= 1;
+
+  // If no provision had any measurable individual impact, skip the
+  // whole block — the card's headline number tells the story.
+  if (rows.length === 0 && !showResidual) {
+    return null;
+  }
 
   return (
     <div className="mt-3 pt-2 border-t border-gray-200 space-y-1">
       <p className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1">
-        By SC provision
+        By HB463 provision
       </p>
       {rows.map(({ key, value }) => (
         <div
@@ -264,9 +295,9 @@ function ProvisionBreakdown({ provisions }: { provisions: ProvisionsAtIncome }) 
       {showResidual && (
         <div
           className="flex items-center justify-between text-[10px] text-gray-500 pt-0.5 italic"
-          title="Reflects interactions among the three South Carolina provisions only. SCIAD reduces taxable income before rates apply, so reverting multiple provisions together produces a combined effect that differs from the sum of the individual provision effects."
+          title="Reflects interactions among HB463's six provisions. Standard deduction, retirement exclusion, and overtime/tip exclusions reduce taxable income before the flat rate applies, so reverting multiple provisions together produces a combined effect that differs from the sum of the individual provision effects."
         >
-          <span>SC provision interaction</span>
+          <span>HB463 provision interaction</span>
           <span className="tabular-nums">{fmtSigned(residual)}</span>
         </div>
       )}
@@ -275,38 +306,38 @@ function ProvisionBreakdown({ provisions }: { provisions: ProvisionsAtIncome }) 
 }
 
 /** Splits the total impact into its two channels:
- *  - SC income tax change (sum of the three provisions plus residual)
+ *  - GA income tax change (sum of the six provisions plus residual)
  *  - Federal income tax change (driven by SALT flow-through and other
  *    federal interactions with state tax)
  *
- *  Tax-change values use the "current law minus pre-2026" sign
+ *  Tax-change values use the "current law minus pre-HB463" sign
  *  convention: a positive value indicates an increase in tax liability
- *  under H.4216. The raw delta is displayed so a positive number
+ *  under HB463. The raw delta is displayed so a positive number
  *  corresponds to a tax increase, but the color coding is inverted so
  *  an increase reads as a cost (red) and a decrease reads as savings
  *  (green). */
 function TaxChannelBreakdown({
-  scTaxChange,
+  gaTaxChange,
   federalTaxChange,
 }: {
-  scTaxChange: number;
+  gaTaxChange: number;
   federalTaxChange: number;
 }) {
-  if (Math.abs(scTaxChange) < 1 && Math.abs(federalTaxChange) < 1) {
+  if (Math.abs(gaTaxChange) < 1 && Math.abs(federalTaxChange) < 1) {
     return null;
   }
   const rows = [
     {
-      label: 'SC income tax',
-      value: scTaxChange,
+      label: 'GA income tax',
+      value: gaTaxChange,
       title:
-        'Change in South Carolina individual income tax liability under H.4216 compared with pre-2026 law. A positive value indicates an increase in tax.',
+        'Change in Georgia individual income tax liability under HB463 compared with pre-HB463 law. A positive value indicates an increase in tax.',
     },
     {
       label: 'Federal income tax',
       value: federalTaxChange,
       title:
-        'Change in federal individual income tax under H.4216 compared with pre-2026 law. South Carolina income tax counts toward the federal itemized deduction for state and local taxes (subject to the $40,000 SALT cap), so a change in South Carolina tax can shift federal taxable income and therefore federal tax. A positive value indicates an increase in tax.',
+        'Change in federal individual income tax under HB463 compared with pre-HB463 law. Georgia income tax counts toward the federal itemized deduction for state and local taxes (subject to the $40,000 SALT cap), so a change in Georgia tax can shift federal taxable income and therefore federal tax. A positive value indicates an increase in tax.',
     },
   ];
 

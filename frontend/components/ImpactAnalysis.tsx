@@ -12,7 +12,11 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useHouseholdImpact } from '@/hooks/useHouseholdImpact';
-import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
+import type {
+  HouseholdImpactResponse,
+  HouseholdRequest,
+  ProvisionKey,
+} from '@/lib/types';
 import ChartWatermark from './ChartWatermark';
 import {
   PROVISION_COLORS,
@@ -28,15 +32,23 @@ interface Props {
   precomputed?: HouseholdImpactResponse | null;
 }
 
-interface ChartRow {
+const PROVISION_ORDER: ProvisionKey[] = [
+  'flat_rate',
+  'standard_deduction',
+  'dependent_exemption',
+  'retirement_exclusion',
+  'overtime_exclusion',
+  'tip_exclusion',
+];
+
+type ProvisionValues = Record<ProvisionKey, number | null>;
+
+interface ChartRow extends ProvisionValues {
   income: number;
   benefit: number;
   federalTaxChange: number;
   stateTaxChange: number;
   netIncomeChange: number;
-  rates: number | null;
-  sciad: number | null;
-  eitc: number | null;
   interaction: number | null;
 }
 
@@ -74,7 +86,7 @@ export default function ImpactAnalysis({
         <p className="text-yellow-700">
           The PolicyEngine API returned an error: <code>{errorMessage}</code>. You
           can still see precomputed results in the example-household cards above
-          or on the <strong>South Carolina impact</strong> tab.
+          or on the <strong>Georgia impact</strong> tab.
         </p>
       </div>
     );
@@ -112,35 +124,30 @@ export default function ImpactAnalysis({
 
   const chartData: ChartRow[] = data.income_range
     .map((inc, i) => {
-      const rates = provChart ? provChart.rates.net_income_change[i] : null;
-      const sciad = provChart ? provChart.sciad.net_income_change[i] : null;
-      const eitc = provChart ? provChart.eitc.net_income_change[i] : null;
-      // Interaction = total net change - sum of per-provision contributions.
-      const interaction =
-        rates !== null && sciad !== null && eitc !== null
-          ? netIncomeChangeSeries[i] - (rates + sciad + eitc)
-          : null;
+      const provisionValues = {} as ProvisionValues;
+      let sumProvisions = 0;
+      let allNonNull = true;
+      for (const key of PROVISION_ORDER) {
+        const v = provChart ? provChart[key]?.net_income_change[i] ?? null : null;
+        provisionValues[key] = v;
+        if (v === null) allNonNull = false;
+        else sumProvisions += v;
+      }
+      const interaction = allNonNull
+        ? netIncomeChangeSeries[i] - sumProvisions
+        : null;
       return {
         income: inc,
         benefit: netIncomeChangeSeries[i],
         federalTaxChange: federalTaxChangeSeries[i],
         stateTaxChange: stateTaxChangeSeries[i],
         netIncomeChange: netIncomeChangeSeries[i],
-        rates,
-        sciad,
-        eitc,
+        ...provisionValues,
         interaction,
       };
     })
     .filter((d) => d.income <= xMax);
 
-  /** Render a summary metric card.
-   *
-   *  Set ``inverseSign`` to true for tax-change cards, where a positive
-   *  value (an increase in tax) is a cost to the household rather than
-   *  a benefit. The flag inverts the green/red color logic so an
-   *  increase in tax reads as a cost and a decrease reads as savings,
-   *  while the displayed dollar amount remains the raw delta. */
   const metricCard = (
     label: string,
     value: number,
@@ -171,8 +178,6 @@ export default function ImpactAnalysis({
     );
   };
 
-  // Custom tooltip that shows all three deltas at the hovered income point,
-  // plus per-provision breakdown when available.
   const HoverTooltip = ({
     active,
     payload,
@@ -194,7 +199,7 @@ export default function ImpactAnalysis({
           padding: '8px 12px',
           fontFamily: 'var(--font-sans)',
           fontSize: 12,
-          minWidth: 220,
+          minWidth: 240,
         }}
       >
         <p style={{ margin: '0 0 4px', fontWeight: 600 }}>
@@ -213,20 +218,20 @@ export default function ImpactAnalysis({
         </p>
         <p
           style={{ margin: 0 }}
-          title="Change in South Carolina individual income tax liability under H.4216 compared with pre-2026 law. A positive value indicates an increase in tax."
+          title="Change in Georgia individual income tax liability under HB463 compared with pre-HB463 law. A positive value indicates an increase in tax."
         >
-          SC tax change: {formatCurrencyWithSign(p.stateTaxChange)}
+          GA tax change: {formatCurrencyWithSign(p.stateTaxChange)}
         </p>
         <p
           style={{ margin: 0 }}
-          title="Change in federal individual income tax under H.4216 compared with pre-2026 law. South Carolina income tax counts toward the federal itemized deduction for state and local taxes (subject to the $40,000 SALT cap), so a change in South Carolina tax can shift federal taxable income and therefore federal tax. A positive value indicates an increase in tax."
+          title="Change in federal individual income tax under HB463 compared with pre-HB463 law. Georgia income tax counts toward the federal itemized deduction for state and local taxes (subject to the $40,000 SALT cap), so a change in Georgia tax can shift federal taxable income and therefore federal tax. A positive value indicates an increase in tax."
         >
           Federal tax change: {formatCurrencyWithSign(p.federalTaxChange)}
         </p>
         <p style={{ margin: '4px 0 0', fontWeight: 600 }}>
           Net income change: {formatCurrencyWithSign(p.netIncomeChange)}
         </p>
-        {hasProvisions && p.rates !== null && p.sciad !== null && p.eitc !== null && (
+        {hasProvisions && (
           <div
             style={{
               marginTop: 6,
@@ -235,9 +240,11 @@ export default function ImpactAnalysis({
             }}
           >
             <p style={{ margin: '0 0 2px', fontSize: 11, color: 'var(--text-muted)' }}>
-              By provision
+              By HB463 provision
             </p>
-            {(['rates', 'sciad', 'eitc'] as const).map((key) => (
+            {PROVISION_ORDER.filter(
+              (key) => p[key] !== null && Math.abs(p[key] as number) >= 1,
+            ).map((key) => (
               <p
                 key={key}
                 style={{
@@ -264,7 +271,7 @@ export default function ImpactAnalysis({
             ))}
             {p.interaction !== null && Math.abs(p.interaction) >= 1 && (
               <p
-                title="Reflects interactions among the three South Carolina provisions only. SCIAD reduces taxable income before rates apply, so reverting multiple provisions together produces a combined effect that differs from the sum of the individual provision effects."
+                title="Reflects interactions among HB463's six provisions. Standard deduction, retirement exclusion, and overtime/tip exclusions reduce taxable income before the flat rate applies, so reverting multiple provisions together produces a combined effect that differs from the sum of the individual provision effects."
                 style={{
                   margin: '2px 0 0',
                   display: 'flex',
@@ -276,7 +283,7 @@ export default function ImpactAnalysis({
                 }}
               >
                 <span style={{ display: 'inline-block', width: 8 }} />
-                <span style={{ flex: 1 }}>SC provision interaction:</span>
+                <span style={{ flex: 1 }}>HB463 provision interaction:</span>
                 <span style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {formatCurrencyWithSign(p.interaction)}
                 </span>
@@ -295,20 +302,17 @@ export default function ImpactAnalysis({
       {/* Personal impact */}
       <div>
         <h3 className="text-xl font-bold text-gray-800 mb-4">
-          Your personal impact from South Carolina 2026 tax changes ({request?.year ?? 2026})
+          Your personal impact from Georgia 2026 tax changes (HB463, {request?.year ?? 2026})
         </h3>
         <p className="text-gray-600 mb-4">
           Based on your employment income of <strong>{formatCurrency(request?.income ?? 0)}</strong>,
-          comparing current law (2026) to pre-2026 law.
+          comparing current law (HB463) to pre-HB463 baseline.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Tax-change cards show the raw delta (a positive value
-              indicates an increase in tax) with inverted color logic
-              so an increase reads as a cost rather than a benefit. */}
           {metricCard('Federal tax change', federalTaxChangePoint, true)}
           {metricCard(
-            'South Carolina state tax change',
+            'Georgia state tax change',
             stateTaxChangePoint,
             true,
           )}
@@ -316,8 +320,11 @@ export default function ImpactAnalysis({
         </div>
 
         {hasProvisions && data.provisions && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            {(['rates', 'sciad', 'eitc'] as const).map((key) => {
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {PROVISION_ORDER.filter(
+              (key) =>
+                Math.abs(data.provisions![key]?.net_income_change ?? 0) >= 1,
+            ).map((key) => {
               const value = data.provisions![key].net_income_change;
               const positive = value > 0;
               const negative = value < 0;
@@ -354,10 +361,10 @@ export default function ImpactAnalysis({
       {/* Chart */}
       <div className="bg-white border rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-1 text-gray-800">
-          Change in net income from South Carolina 2026 tax changes
+          Change in net income from Georgia 2026 tax changes (HB463)
         </h3>
         <p className="text-sm text-gray-500 mb-4">
-          Current law (2026) vs. pre-2026 law, by employment income
+          Current law (HB463) vs. pre-HB463 baseline, by employment income
         </p>
         <ResponsiveContainer width="100%" height={400}>
             <LineChart data={chartData} margin={{ left: 20, right: 20, top: 5, bottom: 5 }}>
@@ -387,13 +394,13 @@ export default function ImpactAnalysis({
         <ChartWatermark />
         {hasProvisions && (
           <p className="text-[11px] text-gray-500 italic mt-2">
-            Hover the chart to see each provision&apos;s contribution. The
-            interaction line in the tooltip is the residual the three
+            Hover the chart to see each HB463 provision&apos;s contribution. The
+            interaction line in the tooltip is the residual the six
             provisions don&apos;t directly explain — it captures tax-math
-            non-additivity (e.g.&nbsp;a higher rate applied to a smaller
-            SCIAD-deducted base, or how the EITC cap interacts with federal
-            EITC). The provisions plus the interaction always sum to the net
-            total.
+            non-additivity (e.g.&nbsp;the flat rate applied to an
+            already-deduction-reduced base, or how the overtime/tip exclusions
+            interact with federal AGI). The provisions plus the interaction
+            always sum to the net total.
           </p>
         )}
       </div>

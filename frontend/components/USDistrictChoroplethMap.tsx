@@ -8,7 +8,7 @@ import {
   ZoomableGroup,
 } from 'react-simple-maps';
 
-export interface SCDistrictData {
+export interface GADistrictData {
   district: string;
   district_number: string;
   representative: string;
@@ -24,7 +24,7 @@ export interface SCDistrictData {
 }
 
 interface Props {
-  data: SCDistrictData[];
+  data: GADistrictData[];
   selectedDistrict: string | null;
   onSelect: (districtNumber: string) => void;
 }
@@ -152,7 +152,7 @@ type Tooltip = {
   value: number;
 };
 
-export default function SCDistrictChoroplethMap({
+export default function GADistrictChoroplethMap({
   data,
   selectedDistrict,
   onSelect,
@@ -166,7 +166,7 @@ export default function SCDistrictChoroplethMap({
   const [zoom, setZoom] = useState(1);
   const [zoomCenter, setZoomCenter] = useState<[number, number]>([-83.4, 32.8]);
 
-  // Fetch SC congressional districts from ArcGIS, with fallback.
+  // Fetch GA congressional districts from ArcGIS, with fallback.
   useEffect(() => {
     let cancelled = false;
     fetch(GA_ARCGIS_URL)
@@ -197,7 +197,7 @@ export default function SCDistrictChoroplethMap({
 
   // Build lookup by district number (as string, without leading zeros).
   const dataByNumber = useMemo(() => {
-    const m = new Map<string, SCDistrictData>();
+    const m = new Map<string, GADistrictData>();
     data.forEach((d) => m.set(String(d.district_number), d));
     return m;
   }, [data]);
@@ -373,8 +373,8 @@ export default function SCDistrictChoroplethMap({
       </div>
 
       <p className="text-xs text-gray-500 text-center mt-4">
-        Average household impact from South Carolina 2026 tax changes. Every
-        district sees a net gain on average; hover for the exact figure.
+        Average household impact from Georgia 2026 tax changes (HB463). Hover
+        a district for the exact figure.
       </p>
     </div>
   );

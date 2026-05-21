@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import SCDistrictMap, { SCDistrictData } from './DynamicDistrictMap';
+import GADistrictMap, { GADistrictData } from './DynamicDistrictMap';
 import ChartWatermark from './ChartWatermark';
 
 interface Props {
@@ -51,7 +51,7 @@ const GA_DISTRICT_REGIONS: Record<string, string> = {
 };
 
 export default function CongressionalDistrictImpact({ year = 2026 }: Props) {
-  const [data, setData] = useState<SCDistrictData[]>([]);
+  const [data, setData] = useState<GADistrictData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export default function CongressionalDistrictImpact({ year = 2026 }: Props) {
             const val = values[i];
             row[h] = isNaN(Number(val)) ? val : Number(val);
           });
-          return row as unknown as SCDistrictData & { state: string; year: number };
+          return row as unknown as GADistrictData & { state: string; year: number };
         });
         // Filter to Georgia only (state code "GA") and selected year
         const scRows = rows
@@ -90,7 +90,7 @@ export default function CongressionalDistrictImpact({ year = 2026 }: Props) {
               representative: GA_REPRESENTATIVES[districtId]?.name || '',
               party: GA_REPRESENTATIVES[districtId]?.party,
               region: GA_DISTRICT_REGIONS[districtId] || '',
-            } as SCDistrictData;
+            } as GADistrictData;
           })
           .sort((a, b) =>
             Number(a.district_number) - Number(b.district_number)
@@ -143,7 +143,7 @@ export default function CongressionalDistrictImpact({ year = 2026 }: Props) {
 
       {/* Map */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <SCDistrictMap
+        <GADistrictMap
           data={data}
           selectedDistrict={selectedDistrict}
           onSelect={(districtNum) =>
@@ -232,7 +232,7 @@ function DistrictDetailCard({
   district,
   onClose,
 }: {
-  district: SCDistrictData;
+  district: GADistrictData;
   onClose: () => void;
 }) {
   const avgChange = district.average_household_income_change;

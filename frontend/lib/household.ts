@@ -1,11 +1,11 @@
 /**
  * Build a PolicyEngine household situation for the PE API.
  *
- * For the South Carolina 2026 Tax Changes dashboard:
- * - The PolicyEngine baseline represents 2026 SC law (H.4216 / Act 110 already applied).
- * - The "reform" reverts SC parameters to their 2025 (pre-2026) values so the
- *   dashboard can measure the impact of the 2026 changes as
- *   (current law baseline) minus (pre-2026 reform).
+ * For the Georgia 2026 Tax Changes (HB463) dashboard:
+ * - The PolicyEngine baseline represents 2026 Georgia law (HB463 already applied).
+ * - The "reform" reverts Georgia parameters to their pre-HB463 values so the
+ *   dashboard can measure the impact of HB463 as
+ *   (current law baseline) minus (pre-HB463 reform).
  */
 
 import type { HouseholdRequest } from "./types";
@@ -13,30 +13,47 @@ import type { HouseholdRequest } from "./types";
 const GROUP_UNITS = ["families", "spm_units", "tax_units", "households"] as const;
 
 /**
- * Revert South Carolina's 2026 tax parameters to 2025 values.
+ * Revert Georgia's HB463 tax parameters to pre-HB463 values.
  * Inline copy of /reform_revert.json so the policy ships with the bundle.
+ *
+ * Period notes:
+ * - Flat rate, standard deduction, dependent exemption revert from 2026
+ *   forward (HB463 set permanent levels effective TY 2026).
+ * - Overtime / tip exclusions self-repeal end of TY 2028, so the revert
+ *   is only applied for TY 2026-2028.
+ * - The retirement-exclusion bump (older cap $65,000 -> $70,000) takes
+ *   effect TY 2027, so the revert applies from TY 2027 forward.
  */
 const REFORM_POLICY: Record<string, Record<string, number | boolean>> = {
-  "gov.states.sc.tax.income.rates[0].rate": {
-    "2026-01-01.2100-12-31": 0,
+  "gov.states.ga.tax.income.main.flat_rate": {
+    "2026-01-01.2100-12-31": 0.0519,
   },
-  "gov.states.sc.tax.income.rates[1].threshold": {
-    "2026-01-01.2100-12-31": 3560,
+  "gov.states.ga.tax.income.deductions.standard.amount.JOINT": {
+    "2026-01-01.2100-12-31": 24000,
   },
-  "gov.states.sc.tax.income.rates[1].rate": {
-    "2026-01-01.2100-12-31": 0.03,
+  "gov.states.ga.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+    "2026-01-01.2100-12-31": 24000,
   },
-  "gov.states.sc.tax.income.rates[2].threshold": {
-    "2026-01-01.2100-12-31": 17830,
+  "gov.states.ga.tax.income.deductions.standard.amount.SINGLE": {
+    "2026-01-01.2100-12-31": 12000,
   },
-  "gov.states.sc.tax.income.rates[2].rate": {
-    "2026-01-01.2100-12-31": 0.06,
+  "gov.states.ga.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+    "2026-01-01.2100-12-31": 12000,
   },
-  "gov.states.sc.tax.income.deductions.sciad.in_effect": {
-    "2026-01-01.2100-12-31": false,
+  "gov.states.ga.tax.income.deductions.standard.amount.SEPARATE": {
+    "2026-01-01.2100-12-31": 12000,
   },
-  "gov.states.sc.tax.income.credits.eitc.max": {
-    "2026-01-01.2100-12-31": 999999999,
+  "gov.states.ga.tax.income.exemptions.dependent": {
+    "2026-01-01.2100-12-31": 4000,
+  },
+  "gov.states.ga.tax.income.agi.exclusions.retirement.cap.older": {
+    "2027-01-01.2100-12-31": 65000,
+  },
+  "gov.states.ga.tax.income.agi.exclusions.overtime.cap": {
+    "2026-01-01.2028-12-31": 0,
+  },
+  "gov.states.ga.tax.income.agi.exclusions.tips.cap": {
+    "2026-01-01.2028-12-31": 0,
   },
 };
 
@@ -63,7 +80,7 @@ export function buildHouseholdSituation(
     max_earnings,
     state_code,
   } = params;
-  const effectiveStateCode = state_code || "SC";
+  const effectiveStateCode = state_code || "GA";
   const yearStr = String(year);
   const axisMax = Math.max(max_earnings, income);
 
@@ -82,7 +99,7 @@ export function buildHouseholdSituation(
         members: ["you"],
         adjusted_gross_income: { [yearStr]: null },
         income_tax: { [yearStr]: null },
-        sc_income_tax: { [yearStr]: null },
+        ga_income_tax: { [yearStr]: null },
       },
     },
     households: {
@@ -135,9 +152,9 @@ export function buildHouseholdSituation(
 }
 
 /**
- * Build the South Carolina 2026 reform policy dict for the PE API.
- * Reverts SC to 2025 values so the dashboard can compute:
- *   impact = current-law baseline - pre-2026 reform
+ * Build the Georgia HB463 inverse reform policy dict for the PE API.
+ * Reverts Georgia to pre-HB463 values so the dashboard can compute:
+ *   impact = current-law baseline - pre-HB463 reform
  */
 export function buildReformPolicy(): Record<string, Record<string, number | boolean>> {
   return REFORM_POLICY;

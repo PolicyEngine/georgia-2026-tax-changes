@@ -113,6 +113,6 @@ describe('AggregateImpact', () => {
         <AggregateImpact triggered={true} />
       </QueryClientProvider>
     );
-    expect(screen.getByText('Loading South Carolina impact data...')).toBeInTheDocument();
+    expect(screen.getByText('Loading Georgia impact data...')).toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   useAggregateImpact,
-  SC_DASHBOARD_YEAR,
+  GA_DASHBOARD_YEAR,
 } from '@/hooks/useAggregateImpact';
 import {
   BarChart,
@@ -66,8 +66,8 @@ interface Props {
 }
 
 export default function AggregateImpact({ triggered }: Props) {
-  // Year is locked to 2026 for the South Carolina 2026 tax changes dashboard.
-  const selectedYear = SC_DASHBOARD_YEAR;
+  // Year is locked to 2026 for the Georgia 2026 tax changes (HB463) dashboard.
+  const selectedYear = GA_DASHBOARD_YEAR;
   const { data, isLoading, error } = useAggregateImpact(triggered, selectedYear);
   const [activeSection, setActiveSection] = useState<
     'fiscal' | 'distributional' | 'winners' | 'poverty'
@@ -81,7 +81,7 @@ export default function AggregateImpact({ triggered }: Props) {
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading South Carolina impact data...</p>
+          <p className="mt-4 text-gray-600">Loading Georgia impact data...</p>
         </div>
       </div>
     );
@@ -91,7 +91,7 @@ export default function AggregateImpact({ triggered }: Props) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-        <h3 className="text-gray-800 font-semibold mb-2">South Carolina impact data not yet available</h3>
+        <h3 className="text-gray-800 font-semibold mb-2">Georgia impact data not yet available</h3>
         <p className="text-gray-600 font-medium mb-2">{errorMessage}</p>
         <p className="text-sm text-gray-500 mt-4">
           Precomputed data has not been generated yet. Run: <code>python scripts/pipeline.py</code>
@@ -127,9 +127,9 @@ export default function AggregateImpact({ triggered }: Props) {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-primary">South Carolina impact analysis</h2>
+      <h2 className="text-2xl font-bold text-primary">Georgia impact analysis</h2>
       <p className="text-sm text-gray-600">
-        Comparing current law ({SC_DASHBOARD_YEAR}) to pre-{SC_DASHBOARD_YEAR} law
+        Comparing current law ({GA_DASHBOARD_YEAR}, HB463) to pre-HB463 baseline
       </p>
 
       {/* Sub-navigation */}
@@ -155,20 +155,20 @@ export default function AggregateImpact({ triggered }: Props) {
           {/* Selected year impact - 3 cards */}
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-3">
-              South Carolina state revenue change ({selectedYear})
+              Georgia state revenue change ({selectedYear})
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className={`rounded-lg p-5 border ${
                 data.budget.state_tax_revenue_impact >= 0 ? 'bg-green-50 border-success' : 'bg-red-50 border-red-300'
               }`}>
-                <p className="text-sm text-gray-700 mb-2">South Carolina state revenue change</p>
+                <p className="text-sm text-gray-700 mb-2">Georgia state revenue change</p>
                 <p className={`text-2xl font-bold ${
                   data.budget.state_tax_revenue_impact >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
                   {formatBillions(data.budget.state_tax_revenue_impact)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Change in South Carolina state tax collections
+                  Change in Georgia state tax collections
                 </p>
               </div>
               <div className={`rounded-lg p-5 border ${
@@ -194,7 +194,7 @@ export default function AggregateImpact({ triggered }: Props) {
                   {formatBillions(data.total_cost)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Net gain to South Carolina households
+                  Net gain to Georgia households
                 </p>
               </div>
             </div>
@@ -454,7 +454,7 @@ export default function AggregateImpact({ triggered }: Props) {
                 Change in poverty rates (%)
               </h3>
               <p className="text-gray-700 mb-3">
-                Percent change from pre-{SC_DASHBOARD_YEAR} law in Supplemental Poverty Measure rates.
+                Percent change from pre-HB463 law in Supplemental Poverty Measure rates.
               </p>
               <ResponsiveContainer width="100%" height={360}>
                 <BarChart data={povertyData} margin={CHART_MARGIN}>
