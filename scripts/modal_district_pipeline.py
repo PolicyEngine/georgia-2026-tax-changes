@@ -1,11 +1,17 @@
-"""Modal-based congressional-district impact pipeline for the SC 2026 tax changes.
+"""Modal-based congressional-district impact pipeline for the GA HB463 dashboard.
 
-Calculates district-level impacts for South Carolina's seven
-congressional districts (SC-01..SC-07; state_fips=45) using
-district-specific datasets on HuggingFace.
+Calculates district-level impacts for Georgia's 14 congressional
+districts (GA-01..GA-14; state_fips=13) using district-specific
+datasets on HuggingFace.
 
-Baseline sim applies the inverse reform (pre-2026 parameters); reform
-sim is current law. Impact = current_law - pre_2026.
+Baseline sim applies the inverse reform (pre-HB463 parameters);
+reform sim is current law. Impact = current_law - pre_hb463.
+
+NOTE: The PyPI release of ``policyengine-us`` must include PR #8306
+(Apply Georgia HB463 (2025-2026 session) tax cuts and refactor GA
+flat-tax rate structure). If you get
+``Unrecognized policy parameter 'gov.states.ga.tax.income.main.flat_rate'``
+you need to bump the pinned version below.
 
 Usage:
     modal run scripts/modal_district_pipeline.py
@@ -19,9 +25,11 @@ import modal
 VARIANT = "revert"
 
 # Modal app definition
-app = modal.App("south-carolina-2026-tax-changes-district-pipeline")
+app = modal.App("georgia-2026-tax-changes-district-pipeline")
 
-# Image with policyengine-us and dependencies
+# Image with policyengine-us and dependencies. HB463 (PR #8306) was
+# merged on main 2026-05-20; the PyPI release that ships it must be
+# pinned here once it's out (>=1.701 at time of writing).
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -32,44 +40,61 @@ image = (
     )
 )
 
-# South Carolina: 7 congressional districts, state FIPS 45.
-SC_STATE = "SC"
-SC_STATE_FIPS = 45
-SC_DISTRICTS = [1, 2, 3, 4, 5, 6, 7]
+# Georgia: 14 congressional districts, state FIPS 13.
+GA_STATE = "GA"
+GA_STATE_FIPS = 13
+GA_DISTRICTS = list(range(1, 15))
 
-# Inverse reform: revert South Carolina parameters to pre-2026 (2025)
-# values (0%/3%/6% rate schedule with bracket thresholds at $3,560 and
-# $17,830, no SCIAD, uncapped EITC).
+# HB463 spans TY 2026-2028. Each Modal invocation defaults to all
+# three years; pass --year=2026 (etc.) on the command line to run a
+# subset. Modal fans these out across district-years in parallel.
+YEARS = [2026, 2027, 2028]
+
+# Inverse reform: revert HB463 to pre-HB463 values. Mirrors the
+# overrides in ``reform_revert.json`` and ``ga_tax_calc.reforms``.
+# Period notes:
+# - Flat rate / SD / dependent exemption revert from TY 2026 forward.
+# - Overtime / tip exclusions self-repeal end of TY 2028 → revert is
+#   only applied for TY 2026-2028.
+# - Retirement-exclusion bump kicks in TY 2027 → revert applies from
+#   TY 2027 forward.
 REFORM_DICT = {
-    "gov.states.sc.tax.income.rates[0].rate": {
-        "2026-01-01.2100-12-31": 0,
+    "gov.states.ga.tax.income.main.flat_rate": {
+        "2026-01-01.2100-12-31": 0.0519,
     },
-    "gov.states.sc.tax.income.rates[1].threshold": {
-        "2026-01-01.2100-12-31": 3560,
+    "gov.states.ga.tax.income.deductions.standard.amount.JOINT": {
+        "2026-01-01.2100-12-31": 24000,
     },
-    "gov.states.sc.tax.income.rates[1].rate": {
-        "2026-01-01.2100-12-31": 0.03,
+    "gov.states.ga.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+        "2026-01-01.2100-12-31": 24000,
     },
-    "gov.states.sc.tax.income.rates[2].threshold": {
-        "2026-01-01.2100-12-31": 17830,
+    "gov.states.ga.tax.income.deductions.standard.amount.SINGLE": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.rates[2].rate": {
-        "2026-01-01.2100-12-31": 0.06,
+    "gov.states.ga.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.deductions.sciad.in_effect": {
-        "2026-01-01.2100-12-31": False,
+    "gov.states.ga.tax.income.deductions.standard.amount.SEPARATE": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.credits.eitc.max": {
-        "2026-01-01.2100-12-31": 999999999,
+    "gov.states.ga.tax.income.exemptions.dependent": {
+        "2026-01-01.2100-12-31": 4000,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.retirement.cap.older": {
+        "2027-01-01.2100-12-31": 65000,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.overtime.cap": {
+        "2026-01-01.2028-12-31": 0,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.tips.cap": {
+        "2026-01-01.2028-12-31": 0,
     },
 }
 
-YEAR = 2026
 
-
-def get_sc_districts() -> list[str]:
-    """Return the list of South Carolina congressional district IDs (SC-01..SC-07)."""
-    return [f"{SC_STATE}-{d:02d}" for d in SC_DISTRICTS]
+def get_ga_districts() -> list[str]:
+    """Return the list of Georgia congressional district IDs (GA-01..GA-14)."""
+    return [f"{GA_STATE}-{d:02d}" for d in GA_DISTRICTS]
 
 
 @app.function(
@@ -78,12 +103,14 @@ def get_sc_districts() -> list[str]:
     timeout=1800,
     retries=2,
 )
-def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict:
-    """Calculate impact for a single South Carolina congressional district.
+def calculate_single_district_impact(
+    district_id: str, year: int = YEARS[0]
+) -> dict:
+    """Calculate impact for a single Georgia congressional district.
 
     Uses the district-specific dataset on HuggingFace. Returns winners/
     losers share, average and relative income change, and poverty
-    percent changes. Impact = current_law - pre_2026.
+    percent changes. Impact = current_law - pre_hb463.
     """
     import re
 
@@ -92,13 +119,15 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
     from policyengine_core.reforms import Reform
     from policyengine_core.periods import instant
 
-    print(f"Calculating impact for {district_id}...")
+    print(f"Calculating impact for {district_id} TY{year}...")
 
     dataset_url = f"hf://policyengine/policyengine-us-data/districts/{district_id}.h5"
 
     try:
-        # Build a bracket-aware reform because ``Reform.from_dict`` does not
-        # understand ``name[N]`` segments in parameter paths.
+        # Walk dotted parameter paths and update the leaf parameter over
+        # the given period. Bracket syntax (``name[N]``) is handled too,
+        # though none of HB463's parameters use it — we keep the support
+        # so this code can drop in unchanged from the SC pipeline.
         def modify(parameters):
             for path, periods in REFORM_DICT.items():
                 node = parameters
@@ -123,11 +152,11 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
                     )
             return parameters
 
-        class SCReform(Reform):
+        class GAReform(Reform):
             def apply(self):
                 self.modify_parameters(modify)
 
-        reform = SCReform
+        reform = GAReform
 
         sim_baseline = Microsimulation(dataset=dataset_url, reform=reform)
         sim_reform = Microsimulation(dataset=dataset_url)
@@ -135,7 +164,7 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
         household_weight = np.array(sim_baseline.calculate("household_weight", period=year))
         baseline_net_income = np.array(sim_baseline.calculate("household_net_income", period=year))
         reform_net_income = np.array(sim_reform.calculate("household_net_income", period=year))
-        # current_law - pre_2026
+        # current_law - pre_hb463
         income_change = reform_net_income - baseline_net_income
 
         total_weight = household_weight.sum()
@@ -165,7 +194,7 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
 
                 baseline_poverty_rate = (baseline_in_poverty * spm_unit_weight).sum() / total_spm_weight
                 reform_poverty_rate = (reform_in_poverty * spm_unit_weight).sum() / total_spm_weight
-                # baseline = pre_2026, reform = current_law
+                # baseline = pre_hb463, reform = current_law
                 poverty_pct_change = (
                     (baseline_poverty_rate - reform_poverty_rate) / reform_poverty_rate * 100
                     if reform_poverty_rate > 0
@@ -207,17 +236,25 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
             "year": year,
         }
 
-        print(f"  {district_id}: avg=${avg_change:.2f}, winners={winners_share:.1%}, poverty={poverty_pct_change:+.1f}%")
+        print(
+            f"  {district_id} TY{year}: avg=${avg_change:.2f}, "
+            f"winners={winners_share:.1%}, poverty={poverty_pct_change:+.1f}%"
+        )
         return result
 
     except Exception as e:
-        print(f"  ERROR for {district_id}: {e}")
+        print(f"  ERROR for {district_id} TY{year}: {e}")
         return None
 
 
 @app.local_entrypoint()
-def main(year: int = YEAR):
-    """Run South Carolina district-level analysis on Modal and save to CSV."""
+def main(year: str = ""):
+    """Run Georgia district-level analysis on Modal and save to CSV.
+
+    Args:
+        year: Comma-separated list of years to run. If empty, runs the
+              default set (2026, 2027, 2028) for all 14 GA districts.
+    """
     import pandas as pd
 
     output_dir = os.path.join(
@@ -228,34 +265,64 @@ def main(year: int = YEAR):
     )
     os.makedirs(output_dir, exist_ok=True)
 
-    districts = get_sc_districts()
+    target_years = (
+        [int(y.strip()) for y in year.split(",")] if year else list(YEARS)
+    )
+    districts = get_ga_districts()
 
-    print("Running South Carolina 2026 tax-changes district analysis on Modal...")
-    print(f"Year: {year}")
-    print(f"State: {SC_STATE} (FIPS {SC_STATE_FIPS})")
+    print("Running Georgia HB463 district analysis on Modal...")
+    print(f"Years: {target_years}")
+    print(f"State: {GA_STATE} (FIPS {GA_STATE_FIPS})")
     print(f"Districts: {districts}")
     print(f"Output directory: {output_dir}")
 
-    results = list(calculate_single_district_impact.map(districts, kwargs={"year": year}))
-    new_districts = [r for r in results if r is not None]
+    # Fan out (district, year) pairs across Modal workers.
+    tasks = [(d, y) for y in target_years for d in districts]
+    args_iter = [t[0] for t in tasks]
+    kwargs_iter = [{"year": t[1]} for t in tasks]
+    results = list(
+        calculate_single_district_impact.starmap(
+            zip(args_iter, [k["year"] for k in kwargs_iter])
+        )
+    )
 
-    failed_count = len(results) - len(new_districts)
+    new_rows = [r for r in results if r is not None]
+
+    failed_count = len(results) - len(new_rows)
     if failed_count > 0:
-        print(f"WARNING: {failed_count} districts failed to calculate")
+        print(f"WARNING: {failed_count} district-years failed to calculate")
 
-    if not new_districts:
+    if not new_rows:
         print("ERROR: No district data generated!")
         return
 
-    df = pd.DataFrame(new_districts)
-    df = df.sort_values(["state", "district"]).reset_index(drop=True)
-
     filepath = os.path.join(output_dir, f"congressional_districts_{VARIANT}.csv")
-    df.to_csv(filepath, index=False)
-    print(f"\nSaved {len(df)} districts to: {filepath}")
 
-    print("\nSummary:")
-    print(f"  Total districts: {len(df)}")
-    print(f"  Avg income change: ${df['average_household_income_change'].mean():,.2f}")
-    print(f"  Min change: ${df['average_household_income_change'].min():,.2f}")
-    print(f"  Max change: ${df['average_household_income_change'].max():,.2f}")
+    # Merge with any existing rows so partial reruns are non-destructive.
+    if os.path.exists(filepath):
+        try:
+            existing = pd.read_csv(filepath)
+            new_keys = {(r["district"], r["year"]) for r in new_rows}
+            existing = existing[
+                ~existing.apply(
+                    lambda r: (r["district"], r["year"]) in new_keys,
+                    axis=1,
+                )
+            ]
+            df = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True)
+        except Exception:
+            df = pd.DataFrame(new_rows)
+    else:
+        df = pd.DataFrame(new_rows)
+
+    df = df.sort_values(["year", "state", "district"]).reset_index(drop=True)
+    df.to_csv(filepath, index=False)
+    print(f"\nSaved {len(df)} rows to: {filepath}")
+
+    print("\nSummary by year:")
+    for y, grp in df.groupby("year"):
+        print(
+            f"  {y}: avg=${grp['average_household_income_change'].mean():,.2f}  "
+            f"(min ${grp['average_household_income_change'].min():,.2f}, "
+            f"max ${grp['average_household_income_change'].max():,.2f})"
+        )

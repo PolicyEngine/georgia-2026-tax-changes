@@ -1,11 +1,18 @@
-"""Modal-based data generation pipeline for the South Carolina 2026 tax changes.
+"""Modal-based data generation pipeline for the Georgia 2026 tax changes (HB463).
 
-Runs the inverse reform (pre-2026 parameters) against the South Carolina
-state dataset on Modal to compute the aggregate impact for tax year 2026.
+Runs the inverse reform (pre-HB463 parameters) against the Georgia
+state dataset on Modal to compute the aggregate impact for tax years
+2026-2028.
 
 The sign convention matches ``ga_tax_calc.microsimulation``: baseline
-sim applies the inverse reform (pre-2026 parameters) and reform sim is
-current law (H.4216 / Act 110), so ``impact = current_law - pre_2026``.
+sim applies the inverse reform (pre-HB463 parameters) and reform sim
+is current law (HB463), so ``impact = current_law - pre_hb463``.
+
+NOTE: The PyPI release of ``policyengine-us`` must include PR #8306
+(Apply Georgia HB463 (2025-2026 session) tax cuts and refactor GA
+flat-tax rate structure). If you get
+``Unrecognized policy parameter 'gov.states.ga.tax.income.main.flat_rate'``
+you need to bump the pinned version below.
 """
 
 import json
@@ -17,9 +24,11 @@ import modal
 VARIANT = "revert"
 
 # Modal app definition
-app = modal.App("south-carolina-2026-tax-changes-pipeline")
+app = modal.App("georgia-2026-tax-changes-pipeline")
 
-# Image with policyengine-us and dependencies
+# Image with policyengine-us and dependencies. HB463 (PR #8306) was
+# merged on main 2026-05-20; the PyPI release that ships it must be
+# pinned here once it's out (>=1.701 at time of writing).
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -30,37 +39,52 @@ image = (
     )
 )
 
-# South Carolina 2026 tax changes only take effect in 2026.
-YEARS = [2026]
+# HB463 spans TY 2026-2028 (overtime/tip caps self-repeal end of TY
+# 2028; the age-65+ retirement-exclusion bump first applies TY 2027).
+YEARS = [2026, 2027, 2028]
 
-# South Carolina state dataset on HuggingFace
-SC_DATASET = "hf://policyengine/policyengine-us-data/states/SC.h5"
+# Georgia state dataset on HuggingFace
+GA_DATASET = "hf://policyengine/policyengine-us-data/states/GA.h5"
 
-# Inverse reform: revert the South Carolina 2026 parameters (H.4216 /
-# Act 110) to their pre-2026 (2025) values — 0%/3%/6% rate schedule with
-# bracket thresholds at $3,560 and $17,830, no SCIAD deduction, and an
-# uncapped EITC.
+# Inverse reform: revert HB463 to pre-HB463 values. Mirrors the seven
+# overrides in ``reform_revert.json`` and ``ga_tax_calc.reforms``.
+# Period notes:
+# - Flat rate / SD / dependent exemption revert from TY 2026 forward
+#   (HB463 set these effective TY 2026).
+# - Overtime / tip exclusions self-repeal end of TY 2028, so the
+#   revert is only applied for TY 2026-2028.
+# - The retirement-exclusion bump (older cap $65k -> $70k) takes
+#   effect TY 2027, so the revert applies from TY 2027 forward.
 REFORM_DICT = {
-    "gov.states.sc.tax.income.rates[0].rate": {
-        "2026-01-01.2100-12-31": 0,
+    "gov.states.ga.tax.income.main.flat_rate": {
+        "2026-01-01.2100-12-31": 0.0519,
     },
-    "gov.states.sc.tax.income.rates[1].threshold": {
-        "2026-01-01.2100-12-31": 3560,
+    "gov.states.ga.tax.income.deductions.standard.amount.JOINT": {
+        "2026-01-01.2100-12-31": 24000,
     },
-    "gov.states.sc.tax.income.rates[1].rate": {
-        "2026-01-01.2100-12-31": 0.03,
+    "gov.states.ga.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+        "2026-01-01.2100-12-31": 24000,
     },
-    "gov.states.sc.tax.income.rates[2].threshold": {
-        "2026-01-01.2100-12-31": 17830,
+    "gov.states.ga.tax.income.deductions.standard.amount.SINGLE": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.rates[2].rate": {
-        "2026-01-01.2100-12-31": 0.06,
+    "gov.states.ga.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.deductions.sciad.in_effect": {
-        "2026-01-01.2100-12-31": False,
+    "gov.states.ga.tax.income.deductions.standard.amount.SEPARATE": {
+        "2026-01-01.2100-12-31": 12000,
     },
-    "gov.states.sc.tax.income.credits.eitc.max": {
-        "2026-01-01.2100-12-31": 999999999,
+    "gov.states.ga.tax.income.exemptions.dependent": {
+        "2026-01-01.2100-12-31": 4000,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.retirement.cap.older": {
+        "2027-01-01.2100-12-31": 65000,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.overtime.cap": {
+        "2026-01-01.2028-12-31": 0,
+    },
+    "gov.states.ga.tax.income.agi.exclusions.tips.cap": {
+        "2026-01-01.2028-12-31": 0,
     },
 }
 
@@ -72,7 +96,7 @@ REFORM_DICT = {
     retries=1,
 )
 def calculate_year(year: int) -> dict:
-    """Calculate South Carolina-wide impact for a single year on Modal."""
+    """Calculate Georgia-wide HB463 impact for a single year on Modal."""
     import re
 
     import numpy as np
@@ -91,8 +115,10 @@ def calculate_year(year: int) -> dict:
         "Gain more than 5%",
     ]
 
-    # Build a bracket-aware reform because ``Reform.from_dict`` does not
-    # understand ``name[N]`` segments in parameter paths.
+    # Walk dotted parameter paths and update the leaf parameter over
+    # the given period. Bracket syntax (``name[N]``) is handled too,
+    # though none of HB463's parameters use it — we keep the support
+    # so this code can drop in unchanged from the SC pipeline.
     def modify(parameters):
         for path, periods in REFORM_DICT.items():
             node = parameters
@@ -117,16 +143,16 @@ def calculate_year(year: int) -> dict:
                 )
         return parameters
 
-    class SCReform(Reform):
+    class GAReform(Reform):
         def apply(self):
             self.modify_parameters(modify)
 
-    reform = SCReform
+    reform = GAReform
 
-    print("  Creating baseline (pre-2026 parameters) simulation on SC dataset...")
-    sim_baseline = Microsimulation(dataset=SC_DATASET, reform=reform)
-    print("  Creating reform (current-law) simulation on SC dataset...")
-    sim_reform = Microsimulation(dataset=SC_DATASET)
+    print("  Creating baseline (pre-HB463 parameters) simulation on GA dataset...")
+    sim_baseline = Microsimulation(dataset=GA_DATASET, reform=reform)
+    print("  Creating reform (current-law) simulation on GA dataset...")
+    sim_reform = Microsimulation(dataset=GA_DATASET)
 
     # ===== FISCAL IMPACT =====
     print("  Calculating fiscal impact...")
@@ -134,16 +160,16 @@ def calculate_year(year: int) -> dict:
     fed_reform = sim_reform.calculate("income_tax", period=year, map_to="household")
     federal_tax_revenue_impact = float((fed_reform - fed_baseline).sum())
 
-    sc_baseline = sim_baseline.calculate("sc_income_tax", period=year, map_to="household")
-    sc_reform = sim_reform.calculate("sc_income_tax", period=year, map_to="household")
-    state_tax_revenue_impact = float((sc_reform - sc_baseline).sum())
+    ga_baseline = sim_baseline.calculate("ga_income_tax", period=year, map_to="household")
+    ga_reform = sim_reform.calculate("ga_income_tax", period=year, map_to="household")
+    state_tax_revenue_impact = float((ga_reform - ga_baseline).sum())
 
     tax_revenue_impact = federal_tax_revenue_impact + state_tax_revenue_impact
     budgetary_impact = tax_revenue_impact
 
     baseline_net_income = sim_baseline.calculate("household_net_income", period=year, map_to="household")
     reform_net_income = sim_reform.calculate("household_net_income", period=year, map_to="household")
-    income_change = reform_net_income - baseline_net_income  # current_law - pre_2026
+    income_change = reform_net_income - baseline_net_income  # current_law - pre_hb463
     change_arr = np.array(income_change)
     baseline_net_income_arr = np.array(baseline_net_income)
     household_weight = sim_reform.calculate("household_weight", period=year)
@@ -342,8 +368,8 @@ def main(years: str = ""):
     """Run the pipeline on Modal and save CSVs locally.
 
     Args:
-        years: Comma-separated list of years to run. If empty, runs the
-               default set (2026 only).
+        years: Comma-separated list of years to run. If empty, runs
+               the default set (2026, 2027, 2028).
     """
     import pandas as pd
 
@@ -360,8 +386,8 @@ def main(years: str = ""):
     else:
         target_years = YEARS
 
-    print(f"Running South Carolina 2026 tax-changes microsimulation for years {target_years} on Modal...")
-    print(f"Dataset: {SC_DATASET}")
+    print(f"Running Georgia HB463 microsimulation for years {target_years} on Modal...")
+    print(f"Dataset: {GA_DATASET}")
     print(f"Output directory: {output_dir}")
 
     results = list(calculate_year.map(target_years))
