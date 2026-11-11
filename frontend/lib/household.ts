@@ -1,5 +1,5 @@
 /**
- * Build a PolicyEngine household situation for the PE API.
+ * Build a PolicyEngine household situation for a household calculation.
  *
  * For the Georgia 2026 Tax Changes (HB463) dashboard:
  * - The PolicyEngine baseline represents 2026 Georgia law (HB463 already applied).
@@ -152,7 +152,7 @@ export function buildHouseholdSituation(
 }
 
 /**
- * Build the Georgia HB463 inverse reform policy dict for the PE API.
+ * Build the Georgia HB463 inverse reform's parameter changes.
  * Reverts Georgia to pre-HB463 values so the dashboard can compute:
  *   impact = current-law baseline - pre-HB463 reform
  */

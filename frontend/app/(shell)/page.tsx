@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import ImpactAnalysis from '@/components/ImpactAnalysis';
 import AggregateImpact from '@/components/AggregateImpact';
 import ExampleHouseholds, { type ExampleHouseholdProfile } from '@/components/ExampleHouseholds';
 import PolicyOverview from '@/components/PolicyOverview';
 import CongressionalDistrictImpact from '@/components/CongressionalDistrictImpact';
+import { submitHouseholdRequest } from '@/hooks/useHouseholdImpact';
 import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
 import { parseHashParams } from '@/lib/embedding';
 
@@ -82,6 +84,7 @@ export default function Home() {
 
 /** Household impact tab */
 function HouseholdImpactTab() {
+  const queryClient = useQueryClient();
   // Initialize state from hash parameters if present
   const getInitialValues = () => {
     if (typeof window === 'undefined') {
@@ -180,7 +183,8 @@ function HouseholdImpactTab() {
   });
 
   const handleCalculate = () => {
-    setSubmittedRequest(buildRequest());
+    // A failed calculation of the same household runs again.
+    submitHouseholdRequest(queryClient, buildRequest(), setSubmittedRequest);
     setTriggered(true);
     setPrecomputedImpact(null);
     setSelectedExampleLabel(null);
@@ -370,7 +374,13 @@ function HouseholdImpactTab() {
               key={v}
               onClick={() => {
                 setMaxEarnings(v);
-                setSubmittedRequest(prev => prev ? { ...prev, max_earnings: v } : null);
+                if (submittedRequest) {
+                  submitHouseholdRequest(
+                    queryClient,
+                    { ...submittedRequest, max_earnings: v },
+                    setSubmittedRequest
+                  );
+                }
               }}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 maxEarnings === v

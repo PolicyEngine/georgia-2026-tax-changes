@@ -77,7 +77,8 @@ export default function ImpactAnalysis({
   }
 
   if (error) {
-    const errorMessage = (error as Error).message;
+    // The panel adds its own full stop after the message.
+    const errorMessage = (error as Error).message.replace(/\.$/, '');
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <h2 className="text-yellow-800 font-semibold mb-2">
