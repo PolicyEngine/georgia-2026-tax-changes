@@ -11,7 +11,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { useEffect } from 'react';
 import { useHouseholdImpact } from '@/hooks/useHouseholdImpact';
+import { HouseholdCalculationError } from '@/lib/api';
 import type {
   HouseholdImpactResponse,
   HouseholdRequest,
@@ -30,6 +32,12 @@ interface Props {
   /** When supplied, the chart renders this precomputed payload instead
    * of firing a live /us/calculate request. */
   precomputed?: HouseholdImpactResponse | null;
+  /**
+   * Told which household's answer is shown, so the page can highlight its
+   * chart range: after a refusal for the firewall's limit, that is the
+   * household shown before, not the refused one.
+   */
+  onShownRequestChange?: (request: HouseholdRequest | null) => void;
 }
 
 const PROVISION_ORDER: ProvisionKey[] = [
@@ -57,15 +65,15 @@ export default function ImpactAnalysis({
   triggered,
   maxEarnings,
   precomputed,
+  onShownRequestChange,
 }: Props) {
-  const liveQuery = useHouseholdImpact(request, triggered && !precomputed);
-  const data = precomputed ?? liveQuery.data;
-  const isLoading = !precomputed && liveQuery.isLoading;
-  const error = precomputed ? null : liveQuery.error;
-  // After a refusal for the firewall's limit, the live query shows the last
-  // household calculated, with the reason.
-  const shownRequest = precomputed ? request : liveQuery.shownRequest;
-  const rateLimitNotice = precomputed ? null : liveQuery.rateLimitNotice;
+  // After a refusal for the firewall's limit, the hook shows the answer
+  // shown before, calculated or precomputed, with the reason.
+  const { data, isLoading, error, shownRequest, rateLimitNotice } =
+    useHouseholdImpact(request, triggered, precomputed ?? null);
+  useEffect(() => {
+    onShownRequestChange?.(shownRequest);
+  }, [onShownRequestChange, shownRequest]);
 
   if (!triggered) return null;
 
@@ -76,6 +84,23 @@ export default function ImpactAnalysis({
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
           <p className="mt-4 text-gray-600">Calculating impact...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error instanceof HouseholdCalculationError && error.rateLimited) {
+    // A refusal for the firewall's limit with nothing shown before: the
+    // explanation as written, not as an error from the API.
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <h2 className="text-yellow-800 font-semibold mb-2">
+          Household calculator temporarily unavailable
+        </h2>
+        <p className="text-yellow-700">{error.message}</p>
+        <p className="mt-2 text-yellow-700">
+          You can still see precomputed results in the example-household cards
+          above or on the <strong>Georgia impact</strong> tab.
+        </p>
       </div>
     );
   }
@@ -118,7 +143,8 @@ export default function ImpactAnalysis({
   const stateTaxChangePoint = benefitData.state_tax_change;
   const netIncomeChangePoint = benefitData.net_income_change;
 
-  const xMax = maxEarnings ?? data.x_axis_max;
+  // The range the shown answer was calculated for.
+  const xMax = shownRequest?.max_earnings ?? maxEarnings ?? data.x_axis_max;
 
   const federalTaxChangeSeries = data.federalTaxChange;
   const stateTaxChangeSeries = data.stateTaxChange;
@@ -305,7 +331,7 @@ export default function ImpactAnalysis({
       {rateLimitNotice && (
         <div role="status" className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
           <p>{rateLimitNotice}</p>
-          <p className="mt-1 text-sm">The results below are for the last household calculated.</p>
+          <p className="mt-1 text-sm">The results below are for the household shown before.</p>
         </div>
       )}
       <h2 className="text-2xl font-bold text-primary">Impact analysis</h2>

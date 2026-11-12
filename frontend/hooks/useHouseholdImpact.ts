@@ -1,12 +1,21 @@
-import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  queryOptions,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   api,
   HouseholdCalculationError,
-  RATE_LIMIT_PAUSE_MILLISECONDS,
+  householdCalculationPauseRemaining,
+  onHouseholdCalculationPause,
+  pauseHouseholdCalculations,
   shouldRetryHouseholdCalculation,
 } from "@/lib/api";
 import { HouseholdRequest, HouseholdImpactResponse } from "@/lib/types";
+
+export { householdCalculationPauseRemaining, pauseHouseholdCalculations };
 
 const HOUSEHOLD_IMPACT_KEY = "householdImpact";
 
@@ -15,32 +24,9 @@ function householdImpactQueryKey(request: HouseholdRequest | null) {
 }
 
 /**
- * When the page may calculate again after a refusal for the firewall's
- * limit, in `Date.now()` milliseconds. Every calculation on the page waits
- * for it, since they share the limit.
- */
-let calculationsPausedUntil = 0;
-const pauseListeners = new Set<() => void>();
-
-/**
- * Stops the page from sending household calculations for `milliseconds`
- * (a minute unless given); 0 ends a pause.
- */
-export function pauseHouseholdCalculations(
-  milliseconds: number = RATE_LIMIT_PAUSE_MILLISECONDS
-): void {
-  calculationsPausedUntil = Date.now() + milliseconds;
-  pauseListeners.forEach((listener) => listener());
-}
-
-/** Milliseconds until the page may calculate again; 0 when it may now. */
-export function householdCalculationPauseRemaining(): number {
-  return Math.max(0, calculationsPausedUntil - Date.now());
-}
-
-/**
- * Whole seconds until the page may calculate again, 0 when it may now.
- * Counts down once a second during a pause.
+ * Whole seconds until the page may calculate again after a refusal for the
+ * firewall's limit, 0 when it may now. Counts down once a second during a
+ * pause.
  */
 export function useHouseholdCalculationPause(): number {
   const [secondsRemaining, setSecondsRemaining] = useState(() =>
@@ -59,32 +45,15 @@ export function useHouseholdCalculationPause(): number {
       }
     };
     update();
-    pauseListeners.add(update);
+    const unsubscribe = onHouseholdCalculationPause(update);
     return () => {
-      pauseListeners.delete(update);
+      unsubscribe();
       if (countdown !== undefined) {
         clearInterval(countdown);
       }
     };
   }, []);
   return secondsRemaining;
-}
-
-/**
- * Calculates a household's impact, and pauses the page's calculations for
- * a minute when the firewall's limit refuses it.
- */
-export async function fetchHouseholdImpact(
-  request: HouseholdRequest
-): Promise<HouseholdImpactResponse> {
-  try {
-    return await api.calculateHouseholdImpact(request);
-  } catch (error) {
-    if (error instanceof HouseholdCalculationError && error.rateLimited) {
-      pauseHouseholdCalculations();
-    }
-    throw error;
-  }
 }
 
 /**
@@ -130,9 +99,9 @@ export function householdImpactQueryOptions(
   request: HouseholdRequest | null,
   enabled: boolean
 ) {
-  return {
+  return queryOptions<HouseholdImpactResponse, Error>({
     queryKey: householdImpactQueryKey(request),
-    queryFn: () => fetchHouseholdImpact(request!),
+    queryFn: () => api.calculateHouseholdImpact(request!),
     enabled: enabled && request !== null,
     // Retry only brief gateway failures: a rate-limited calculation would be
     // refused again until the firewall's one-minute window ends.
@@ -146,7 +115,40 @@ export function householdImpactQueryOptions(
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retryOnMount: false,
-  };
+  });
+}
+
+/** The household whose answer a page showed last. */
+interface ShownHousehold {
+  request: HouseholdRequest;
+  /**
+   * The precomputed answer, when the page showed an example household,
+   * which is not in the query cache; null for a calculated answer.
+   */
+  precomputed: HouseholdImpactResponse | null;
+}
+
+/**
+ * The household whose answer each query client's page showed last. After a
+ * refusal for the firewall's limit, that answer is shown again.
+ */
+const shownHouseholds = new WeakMap<QueryClient, ShownHousehold>();
+
+/**
+ * Records that the page shows `request`'s answer: the calculated one in
+ * the query cache, or `precomputed` for an example household. Null
+ * forgets it.
+ */
+export function rememberShownHouseholdRequest(
+  queryClient: QueryClient,
+  request: HouseholdRequest | null,
+  precomputed: HouseholdImpactResponse | null = null
+): void {
+  if (request === null) {
+    shownHouseholds.delete(queryClient);
+  } else {
+    shownHouseholds.set(queryClient, { request, precomputed });
+  }
 }
 
 /** What the results area shows. */
@@ -159,33 +161,16 @@ export interface HouseholdImpactToShow {
   error: Error | null;
   /**
    * Set when the submitted household was refused for the firewall's limit
-   * and `data` is the last household's answer: why, to show above it.
+   * and `data` is the answer the page showed before: why, to show above it.
    */
   rateLimitNotice: string | null;
 }
 
-/** The household answered most recently, with its answer. */
-function lastHouseholdAnswer(
-  queryClient: QueryClient
-): { request: HouseholdRequest; data: HouseholdImpactResponse } | null {
-  const answered = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: [HOUSEHOLD_IMPACT_KEY] })
-    .filter((query) => query.state.status === "success")
-    .sort((first, second) => second.state.dataUpdatedAt - first.state.dataUpdatedAt);
-  if (answered.length === 0) {
-    return null;
-  }
-  return {
-    request: answered[0].queryKey[1] as HouseholdRequest,
-    data: answered[0].state.data as HouseholdImpactResponse,
-  };
-}
-
 /**
- * After a refusal for the firewall's limit, the last answer stays on
- * screen with the reason; any other failure, or a refusal with no earlier
- * answer, is shown in place of the results.
+ * After a refusal for the firewall's limit, the answer the page showed
+ * before, calculated or precomputed, stays on screen with the reason; any
+ * other failure, or a refusal with nothing shown before, is shown in place
+ * of the results.
  */
 export function householdImpactToShow(
   queryClient: QueryClient,
@@ -200,11 +185,18 @@ export function householdImpactToShow(
     current.error instanceof HouseholdCalculationError &&
     current.error.rateLimited
   ) {
-    const lastAnswer = lastHouseholdAnswer(queryClient);
-    if (lastAnswer !== null) {
+    const shownHousehold = shownHouseholds.get(queryClient);
+    const shownAnswer =
+      shownHousehold === undefined
+        ? undefined
+        : shownHousehold.precomputed ??
+          queryClient.getQueryData<HouseholdImpactResponse>(
+            householdImpactQueryKey(shownHousehold.request)
+          );
+    if (shownHousehold !== undefined && shownAnswer !== undefined) {
       return {
-        data: lastAnswer.data,
-        shownRequest: lastAnswer.request,
+        data: shownAnswer,
+        shownRequest: shownHousehold.request,
         isLoading: false,
         error: null,
         rateLimitNotice: current.error.message,
@@ -220,13 +212,35 @@ export function householdImpactToShow(
   };
 }
 
+/**
+ * What the results area shows for `request`: its calculated answer, or
+ * `precomputed` when the page shows an example household, which is never
+ * calculated.
+ */
 export function useHouseholdImpact(
   request: HouseholdRequest | null,
-  enabled: boolean
+  enabled: boolean,
+  precomputed: HouseholdImpactResponse | null = null
 ): HouseholdImpactToShow {
   const queryClient = useQueryClient();
-  const query = useQuery<HouseholdImpactResponse>(
-    householdImpactQueryOptions(request, enabled)
+  const query = useQuery(
+    householdImpactQueryOptions(request, enabled && precomputed === null)
   );
+  const shownData = precomputed ?? query.data;
+  useEffect(() => {
+    // The page now shows this household's own answer.
+    if (enabled && shownData !== undefined && request !== null) {
+      rememberShownHouseholdRequest(queryClient, request, precomputed);
+    }
+  }, [queryClient, enabled, request, shownData, precomputed]);
+  if (precomputed !== null) {
+    return {
+      data: precomputed,
+      shownRequest: request,
+      isLoading: false,
+      error: null,
+      rateLimitNotice: null,
+    };
+  }
   return householdImpactToShow(queryClient, request, query);
 }
