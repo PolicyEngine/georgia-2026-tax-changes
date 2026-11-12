@@ -15,6 +15,7 @@ import {
   pauseHouseholdCalculations,
   rememberShownHouseholdRequest,
   resetFailedHouseholdImpact,
+  shownHouseholdRecordAfter,
   submitHouseholdRequest,
   useHouseholdImpact,
 } from "@/hooks/useHouseholdImpact";
@@ -313,6 +314,7 @@ describe("householdImpactToShow", () => {
     ).toEqual({
       data: impactAnswer(200),
       shownRequest: earlierRequest,
+      shownPrecomputed: null,
       isLoading: false,
       error: null,
       rateLimitNotice: refusal.message,
@@ -363,6 +365,8 @@ describe("householdImpactToShow", () => {
     ).toEqual({
       data: exampleAnswer,
       shownRequest: exampleRequest,
+      // The page rescales a kept example instead of calculating.
+      shownPrecomputed: exampleAnswer,
       isLoading: false,
       error: null,
       rateLimitNotice: refusal.message,
@@ -386,6 +390,7 @@ describe("householdImpactToShow", () => {
     ).toEqual({
       data: undefined,
       shownRequest: householdRequest,
+      shownPrecomputed: null,
       isLoading: false,
       error: failure,
       rateLimitNotice: null,
@@ -479,7 +484,77 @@ describe("useHouseholdImpact", () => {
     expect(result.current).toMatchObject({
       data: exampleAnswer,
       shownRequest: exampleRequest,
+      shownPrecomputed: exampleAnswer,
       error: null,
     });
+  });
+
+  it("forgets the shown household when the results area leaves the page", async () => {
+    // The reader opens another tab, which removes the household tab and its
+    // results; a refusal after coming back has nothing on screen to keep.
+    vi.spyOn(api, "calculateHouseholdImpact").mockResolvedValue(
+      impactAnswer(500),
+    );
+    const { result, unmount } = renderHook(
+      () => useHouseholdImpact(earlierRequest, true),
+      { wrapper: withQueryClient },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(impactAnswer(500)));
+
+    unmount();
+
+    expect(
+      householdImpactToShow(queryClient, householdRequest, {
+        data: undefined,
+        error: rateLimitRefusal(),
+        isLoading: false,
+      }),
+    ).toMatchObject({ data: undefined, rateLimitNotice: null });
+  });
+});
+
+describe("shownHouseholdRecordAfter", () => {
+  it("records a household whose own answer is shown, calculated now or kept", () => {
+    expect(
+      shownHouseholdRecordAfter(householdRequest, {
+        data: impactAnswer(350),
+        error: null,
+      }),
+    ).toEqual({ action: "remember", request: householdRequest });
+  });
+
+  it("records a precomputed example that is shown", () => {
+    // The example's own answer is on screen, though nothing was calculated.
+    const exampleAnswer = { ...impactAnswer(120), x_axis_max: 160000 };
+
+    expect(
+      shownHouseholdRecordAfter(exampleRequest, {
+        data: exampleAnswer,
+        error: null,
+      }),
+    ).toEqual({ action: "remember", request: exampleRequest });
+  });
+
+  it("forgets the shown household when a failure other than a refusal is shown", () => {
+    // After an error panel, a later refusal must not bring back an older
+    // answer that was no longer on screen.
+    expect(
+      shownHouseholdRecordAfter(householdRequest, {
+        data: undefined,
+        error: new HouseholdCalculationError("HTTP 500", 500, false, false),
+      }),
+    ).toEqual({ action: "forget" });
+  });
+
+  it("keeps the record while a household is loading or after a refusal", () => {
+    expect(
+      shownHouseholdRecordAfter(householdRequest, { data: undefined, error: null }),
+    ).toEqual({ action: "keep" });
+    expect(
+      shownHouseholdRecordAfter(householdRequest, {
+        data: undefined,
+        error: rateLimitRefusal(),
+      }),
+    ).toEqual({ action: "keep" });
   });
 });

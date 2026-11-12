@@ -90,6 +90,55 @@ describe('ImpactAnalysis error panel', () => {
     );
     expect(container.textContent).not.toContain('..');
   });
+
+  it('points to the Statewide impact tab', () => {
+    useHouseholdImpactMock.mockReturnValue({
+      data: undefined,
+      shownRequest: householdRequest,
+      isLoading: false,
+      error: new HouseholdCalculationError(
+        'PolicyEngine could not calculate this household (HTTP 500): Internal error',
+        500,
+        false,
+      ),
+      rateLimitNotice: null,
+    });
+
+    const { container } = render(
+      <ImpactAnalysis request={householdRequest} triggered />,
+    );
+
+    // The page's tabs: there is no "Georgia impact" tab.
+    expect(container.textContent).toContain('on the Statewide impact tab.');
+  });
+
+  it('does not say the API returned an error when no answer arrived', () => {
+    // On www.policyengine.org, where the firewall's 429 is readable, no
+    // answer means a network failure.
+    useHouseholdImpactMock.mockReturnValue({
+      data: undefined,
+      shownRequest: householdRequest,
+      isLoading: false,
+      error: new HouseholdCalculationError(
+        "PolicyEngine's calculation service could not be reached. Check " +
+          'your connection and try again.',
+        null,
+        false,
+      ),
+      rateLimitNotice: null,
+    });
+
+    const { container } = render(
+      <ImpactAnalysis request={householdRequest} triggered />,
+    );
+
+    expect(container.textContent).not.toContain('The PolicyEngine API returned an error');
+    expect(container.textContent).toContain(
+      'The page received no answer from the PolicyEngine API: ' +
+        "PolicyEngine's calculation service could not be reached. Check " +
+        'your connection and try again. You can still see precomputed results',
+    );
+  });
 });
 
 describe('ImpactAnalysis after a rate-limit refusal', () => {
@@ -166,6 +215,34 @@ describe('ImpactAnalysis after a rate-limit refusal', () => {
     expect(shownRequestChanges).toEqual([earlierRequest]);
   });
 
+  it('tells the page when the shown answer is a precomputed example', () => {
+    // A refusal kept an example household on screen: the page rescales
+    // the example from its x-axis buttons instead of calculating.
+    const exampleRequest = { ...earlierRequest, income: 80000, max_earnings: 160000 };
+    const exampleAnswer = { ...impactAnswer(120), x_axis_max: 160000 };
+    useHouseholdImpactMock.mockReturnValue({
+      data: exampleAnswer,
+      shownRequest: exampleRequest,
+      shownPrecomputed: exampleAnswer,
+      isLoading: false,
+      error: null,
+      rateLimitNotice,
+    });
+    const shownHouseholds: Array<[HouseholdRequest | null, HouseholdImpactResponse | null]> = [];
+
+    render(
+      <ImpactAnalysis
+        request={householdRequest}
+        triggered
+        onShownRequestChange={(request, precomputed) =>
+          shownHouseholds.push([request, precomputed])
+        }
+      />,
+    );
+
+    expect(shownHouseholds).toEqual([[exampleRequest, exampleAnswer]]);
+  });
+
   it('shows a refusal with nothing shown before as plain text', () => {
     useHouseholdImpactMock.mockReturnValue({
       data: undefined,
@@ -186,5 +263,21 @@ describe('ImpactAnalysis after a rate-limit refusal', () => {
     expect(container.textContent).toContain(
       'You can still see precomputed results in the example-household cards above',
     );
+  });
+
+  it('points a refusal shown as plain text to the Statewide impact tab', () => {
+    useHouseholdImpactMock.mockReturnValue({
+      data: undefined,
+      shownRequest: householdRequest,
+      isLoading: false,
+      error: new HouseholdCalculationError(rateLimitNotice, 429, false, true),
+      rateLimitNotice: null,
+    });
+
+    const { container } = render(
+      <ImpactAnalysis request={householdRequest} triggered />,
+    );
+
+    expect(container.textContent).toContain('on the Statewide impact tab.');
   });
 });
