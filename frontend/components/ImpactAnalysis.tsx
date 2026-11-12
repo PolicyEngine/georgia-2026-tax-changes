@@ -35,9 +35,14 @@ interface Props {
   /**
    * Told which household's answer is shown, so the page can highlight its
    * chart range: after a refusal for the firewall's limit, that is the
-   * household shown before, not the refused one.
+   * household shown before, not the refused one. `precomputed` is its
+   * answer when it is an example household, which the page rescales
+   * without calculating; null for a calculated answer.
    */
-  onShownRequestChange?: (request: HouseholdRequest | null) => void;
+  onShownRequestChange?: (
+    request: HouseholdRequest | null,
+    precomputed: HouseholdImpactResponse | null,
+  ) => void;
 }
 
 const PROVISION_ORDER: ProvisionKey[] = [
@@ -69,11 +74,11 @@ export default function ImpactAnalysis({
 }: Props) {
   // After a refusal for the firewall's limit, the hook shows the answer
   // shown before, calculated or precomputed, with the reason.
-  const { data, isLoading, error, shownRequest, rateLimitNotice } =
+  const { data, isLoading, error, shownRequest, shownPrecomputed, rateLimitNotice } =
     useHouseholdImpact(request, triggered, precomputed ?? null);
   useEffect(() => {
-    onShownRequestChange?.(shownRequest);
-  }, [onShownRequestChange, shownRequest]);
+    onShownRequestChange?.(shownRequest, shownPrecomputed);
+  }, [onShownRequestChange, shownRequest, shownPrecomputed]);
 
   if (!triggered) return null;
 
@@ -99,7 +104,7 @@ export default function ImpactAnalysis({
         <p className="text-yellow-700">{error.message}</p>
         <p className="mt-2 text-yellow-700">
           You can still see precomputed results in the example-household cards
-          above or on the <strong>Georgia impact</strong> tab.
+          above or on the <strong>Statewide impact</strong> tab.
         </p>
       </div>
     );
@@ -108,15 +113,21 @@ export default function ImpactAnalysis({
   if (error) {
     // The panel adds its own full stop after the message.
     const errorMessage = (error as Error).message.replace(/\.$/, '');
+    // A network failure or a timeout: no answer arrived to report.
+    const noAnswerArrived =
+      error instanceof HouseholdCalculationError && error.status === null;
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <h2 className="text-yellow-800 font-semibold mb-2">
           Household calculator temporarily unavailable
         </h2>
         <p className="text-yellow-700">
-          The PolicyEngine API returned an error: <code>{errorMessage}</code>. You
-          can still see precomputed results in the example-household cards above
-          or on the <strong>Georgia impact</strong> tab.
+          {noAnswerArrived
+            ? 'The page received no answer from the PolicyEngine API: '
+            : 'The PolicyEngine API returned an error: '}
+          <code>{errorMessage}</code>. You can still see precomputed results in
+          the example-household cards above or on the{' '}
+          <strong>Statewide impact</strong> tab.
         </p>
       </div>
     );

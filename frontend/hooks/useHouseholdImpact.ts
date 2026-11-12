@@ -156,6 +156,11 @@ export interface HouseholdImpactToShow {
   data: HouseholdImpactResponse | undefined;
   /** The household whose answer `data` is. */
   shownRequest: HouseholdRequest | null;
+  /**
+   * `data` when it is an example household's precomputed answer, chosen
+   * now or kept after a refusal; null for a calculated answer or none.
+   */
+  shownPrecomputed: HouseholdImpactResponse | null;
   isLoading: boolean;
   /** A failure to show in place of the results. */
   error: Error | null;
@@ -197,6 +202,7 @@ export function householdImpactToShow(
       return {
         data: shownAnswer,
         shownRequest: shownHousehold.request,
+        shownPrecomputed: shownHousehold.precomputed,
         isLoading: false,
         error: null,
         rateLimitNotice: current.error.message,
@@ -206,10 +212,40 @@ export function householdImpactToShow(
   return {
     data: current.data,
     shownRequest: request,
+    shownPrecomputed: null,
     isLoading: current.isLoading,
     error: current.error,
     rateLimitNotice: null,
   };
+}
+
+/** How a render of the results area changes the record of the shown household. */
+export type ShownHouseholdRecordChange =
+  | { action: "remember"; request: HouseholdRequest }
+  | { action: "forget" }
+  | { action: "keep" };
+
+/**
+ * A household whose own answer is shown, calculated now, kept, or
+ * precomputed for an example, is recorded. A failure other than a refusal
+ * forgets the record, so a later refusal does not bring back an older
+ * answer that was no longer on screen. Loading, and a refusal (which shows
+ * the recorded answer), leave the record as it is.
+ */
+export function shownHouseholdRecordAfter(
+  request: HouseholdRequest | null,
+  current: { data: HouseholdImpactResponse | undefined; error: Error | null }
+): ShownHouseholdRecordChange {
+  if (current.data !== undefined && request !== null) {
+    return { action: "remember", request };
+  }
+  if (
+    current.error !== null &&
+    !(current.error instanceof HouseholdCalculationError && current.error.rateLimited)
+  ) {
+    return { action: "forget" };
+  }
+  return { action: "keep" };
 }
 
 /**
@@ -227,16 +263,35 @@ export function useHouseholdImpact(
     householdImpactQueryOptions(request, enabled && precomputed === null)
   );
   const shownData = precomputed ?? query.data;
+  // An example's precomputed answer replaces any failure of its query.
+  const shownError = precomputed === null ? query.error : null;
   useEffect(() => {
-    // The page now shows this household's own answer.
-    if (enabled && shownData !== undefined && request !== null) {
-      rememberShownHouseholdRequest(queryClient, request, precomputed);
+    if (!enabled) {
+      return;
     }
-  }, [queryClient, enabled, request, shownData, precomputed]);
+    const change = shownHouseholdRecordAfter(request, {
+      data: shownData,
+      error: shownError,
+    });
+    if (change.action === "remember") {
+      rememberShownHouseholdRequest(queryClient, change.request, precomputed);
+    } else if (change.action === "forget") {
+      rememberShownHouseholdRequest(queryClient, null);
+    }
+  }, [queryClient, enabled, request, shownData, shownError, precomputed]);
+  useEffect(
+    () => () => {
+      // The results area has left the page, as when the reader opens
+      // another tab, so nothing it showed is on screen any more.
+      rememberShownHouseholdRequest(queryClient, null);
+    },
+    [queryClient]
+  );
   if (precomputed !== null) {
     return {
       data: precomputed,
       shownRequest: request,
+      shownPrecomputed: precomputed,
       isLoading: false,
       error: null,
       rateLimitNotice: null,
