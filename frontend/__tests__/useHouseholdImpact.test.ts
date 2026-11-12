@@ -2,18 +2,21 @@ import {
   focusManager,
   onlineManager,
   QueryClient,
+  QueryClientProvider,
   QueryObserver,
 } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  fetchHouseholdImpact,
-  householdCalculationPauseRemaining,
   householdImpactQueryOptions,
   householdImpactToShow,
   pauseHouseholdCalculations,
+  rememberShownHouseholdRequest,
   resetFailedHouseholdImpact,
   submitHouseholdRequest,
+  useHouseholdImpact,
 } from "@/hooks/useHouseholdImpact";
 import { api, HouseholdCalculationError } from "@/lib/api";
 import type { HouseholdImpactResponse, HouseholdRequest } from "@/lib/types";
@@ -30,10 +33,20 @@ const householdRequest: HouseholdRequest = {
 // The key useHouseholdImpact gives the request's calculation.
 const queryKey = ["householdImpact", householdRequest];
 
-const queryClient = new QueryClient();
+// A new client for each test, which also forgets which answer the page
+// showed.
+let queryClient = new QueryClient();
 
 // Another household, calculated before the one the page shows now.
 const earlierRequest: HouseholdRequest = { ...householdRequest, income: 50000 };
+
+// A precomputed example household, shown without a calculation.
+const exampleRequest: HouseholdRequest = {
+  ...householdRequest,
+  age_spouse: 35,
+  income: 80000,
+  max_earnings: 160000,
+};
 
 function impactAnswer(difference: number): HouseholdImpactResponse {
   return {
@@ -64,8 +77,14 @@ function rateLimitRefusal(): HouseholdCalculationError {
   );
 }
 
+/** Provides the test's query client to a rendered hook, as the page does. */
+function withQueryClient({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children);
+}
+
 afterEach(() => {
   queryClient.clear();
+  queryClient = new QueryClient();
   vi.restoreAllMocks();
   // Real time first, so that ending the pause ends it in real time.
   vi.useRealTimers();
@@ -187,35 +206,6 @@ describe("submitHouseholdRequest during a pause", () => {
   });
 });
 
-describe("fetchHouseholdImpact", () => {
-  it("pauses calculations for a minute after a rate-limit refusal", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(api, "calculateHouseholdImpact").mockRejectedValue(
-      rateLimitRefusal(),
-    );
-
-    await expect(fetchHouseholdImpact(householdRequest)).rejects.toMatchObject(
-      { rateLimited: true },
-    );
-
-    expect(householdCalculationPauseRemaining()).toBe(60_000);
-    vi.advanceTimersByTime(60_000);
-    expect(householdCalculationPauseRemaining()).toBe(0);
-  });
-
-  it("does not pause after other failures", async () => {
-    vi.spyOn(api, "calculateHouseholdImpact").mockRejectedValue(
-      new HouseholdCalculationError("HTTP 503", 503, true, false),
-    );
-
-    await expect(fetchHouseholdImpact(householdRequest)).rejects.toMatchObject(
-      { status: 503 },
-    );
-
-    expect(householdCalculationPauseRemaining()).toBe(0);
-  });
-});
-
 describe("householdImpactQueryOptions", () => {
   it("never calculates a refused household again on its own", async () => {
     // A mounted client follows focus and network events, as the page's does.
@@ -266,6 +256,10 @@ describe("householdImpactQueryOptions", () => {
       expect(queryClient.getQueryState(queryKey)?.status).toBe("success"),
     );
 
+    // An hour later, the window regains focus and the page shows the
+    // household again.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 60 * 60 * 1000);
     focusManager.setFocused(false);
     focusManager.setFocused(true);
     const secondObserver = new QueryObserver(
@@ -307,6 +301,7 @@ describe("householdImpactToShow", () => {
       ["householdImpact", earlierRequest],
       impactAnswer(200),
     );
+    rememberShownHouseholdRequest(queryClient, earlierRequest);
     const refusal = rateLimitRefusal();
 
     expect(
@@ -324,18 +319,21 @@ describe("householdImpactToShow", () => {
     });
   });
 
-  it("shows the most recent of several earlier answers", () => {
-    const latestRequest = { ...householdRequest, income: 60000 };
+  it("shows the answer that was on screen, not the one calculated last", () => {
+    // The reader calculated the earlier household, then another, then went
+    // back to the earlier one, which the page showed from the cache.
+    const otherRequest = { ...householdRequest, income: 60000 };
     queryClient.setQueryData(
       ["householdImpact", earlierRequest],
       impactAnswer(200),
       { updatedAt: 1_000 },
     );
     queryClient.setQueryData(
-      ["householdImpact", latestRequest],
+      ["householdImpact", otherRequest],
       impactAnswer(300),
       { updatedAt: 2_000 },
     );
+    rememberShownHouseholdRequest(queryClient, { ...earlierRequest });
 
     expect(
       householdImpactToShow(queryClient, householdRequest, {
@@ -343,7 +341,32 @@ describe("householdImpactToShow", () => {
         error: rateLimitRefusal(),
         isLoading: false,
       }),
-    ).toMatchObject({ data: impactAnswer(300), shownRequest: latestRequest });
+    ).toMatchObject({ data: impactAnswer(200), shownRequest: earlierRequest });
+  });
+
+  it("shows the precomputed example that was on screen", () => {
+    // A live answer from before the reader chose the example.
+    queryClient.setQueryData(
+      ["householdImpact", earlierRequest],
+      impactAnswer(200),
+    );
+    const exampleAnswer = { ...impactAnswer(120), x_axis_max: 160000 };
+    rememberShownHouseholdRequest(queryClient, exampleRequest, exampleAnswer);
+    const refusal = rateLimitRefusal();
+
+    expect(
+      householdImpactToShow(queryClient, householdRequest, {
+        data: undefined,
+        error: refusal,
+        isLoading: false,
+      }),
+    ).toEqual({
+      data: exampleAnswer,
+      shownRequest: exampleRequest,
+      isLoading: false,
+      error: null,
+      rateLimitNotice: refusal.message,
+    });
   });
 
   it("shows other failures in place of the results", () => {
@@ -351,6 +374,7 @@ describe("householdImpactToShow", () => {
       ["householdImpact", earlierRequest],
       impactAnswer(200),
     );
+    rememberShownHouseholdRequest(queryClient, earlierRequest);
     const failure = new HouseholdCalculationError("HTTP 500", 500, false, false);
 
     expect(
@@ -368,7 +392,12 @@ describe("householdImpactToShow", () => {
     });
   });
 
-  it("shows the refusal itself when nothing was calculated before", () => {
+  it("shows the refusal itself when nothing was shown before", () => {
+    // An answer in the cache that the page never showed does not count.
+    queryClient.setQueryData(
+      ["householdImpact", earlierRequest],
+      impactAnswer(200),
+    );
     const refusal = rateLimitRefusal();
 
     expect(
@@ -378,5 +407,79 @@ describe("householdImpactToShow", () => {
         isLoading: false,
       }),
     ).toMatchObject({ data: undefined, error: refusal, rateLimitNotice: null });
+  });
+});
+
+describe("useHouseholdImpact", () => {
+  it("keeps the household on screen after a refusal, not the one calculated last", async () => {
+    const otherRequest = { ...householdRequest, income: 60000 };
+    const calculate = vi
+      .spyOn(api, "calculateHouseholdImpact")
+      .mockImplementation(async (request) => {
+        if (request.income === householdRequest.income) {
+          throw rateLimitRefusal();
+        }
+        return impactAnswer(request.income / 100);
+      });
+    const { result, rerender } = renderHook(
+      ({ request }: { request: HouseholdRequest }) =>
+        useHouseholdImpact(request, true),
+      { initialProps: { request: earlierRequest }, wrapper: withQueryClient },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(impactAnswer(500)));
+    rerender({ request: otherRequest });
+    await waitFor(() => expect(result.current.data).toEqual(impactAnswer(600)));
+    // Back to the earlier household, which the page shows from the cache.
+    rerender({ request: { ...earlierRequest } });
+    await waitFor(() => expect(result.current.data).toEqual(impactAnswer(500)));
+
+    rerender({ request: householdRequest });
+    await waitFor(() => expect(result.current.rateLimitNotice).not.toBeNull());
+
+    expect(result.current).toMatchObject({
+      data: impactAnswer(500),
+      shownRequest: earlierRequest,
+      error: null,
+    });
+    expect(calculate).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a precomputed example on screen after a refusal", async () => {
+    const calculate = vi
+      .spyOn(api, "calculateHouseholdImpact")
+      .mockRejectedValue(rateLimitRefusal());
+    const exampleAnswer = { ...impactAnswer(120), x_axis_max: 160000 };
+    const { result, rerender } = renderHook(
+      ({
+        request,
+        precomputed,
+      }: {
+        request: HouseholdRequest;
+        precomputed: HouseholdImpactResponse | null;
+      }) => useHouseholdImpact(request, true, precomputed),
+      {
+        initialProps: {
+          request: exampleRequest,
+          precomputed: exampleAnswer as HouseholdImpactResponse | null,
+        },
+        wrapper: withQueryClient,
+      },
+    );
+    // The example is shown without a calculation.
+    expect(result.current).toMatchObject({
+      data: exampleAnswer,
+      shownRequest: exampleRequest,
+    });
+    expect(calculate).not.toHaveBeenCalled();
+
+    // The reader edits the household and calculates it; it is refused.
+    rerender({ request: householdRequest, precomputed: null });
+    await waitFor(() => expect(result.current.rateLimitNotice).not.toBeNull());
+
+    expect(result.current).toMatchObject({
+      data: exampleAnswer,
+      shownRequest: exampleRequest,
+      error: null,
+    });
   });
 });
