@@ -62,6 +62,10 @@ export default function ImpactAnalysis({
   const data = precomputed ?? liveQuery.data;
   const isLoading = !precomputed && liveQuery.isLoading;
   const error = precomputed ? null : liveQuery.error;
+  // After a refusal for the firewall's limit, the live query shows the last
+  // household calculated, with the reason.
+  const shownRequest = precomputed ? request : liveQuery.shownRequest;
+  const rateLimitNotice = precomputed ? null : liveQuery.rateLimitNotice;
 
   if (!triggered) return null;
 
@@ -298,15 +302,21 @@ export default function ImpactAnalysis({
 
   return (
     <div className="space-y-8">
+      {rateLimitNotice && (
+        <div role="status" className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
+          <p>{rateLimitNotice}</p>
+          <p className="mt-1 text-sm">The results below are for the last household calculated.</p>
+        </div>
+      )}
       <h2 className="text-2xl font-bold text-primary">Impact analysis</h2>
 
       {/* Personal impact */}
       <div>
         <h3 className="text-xl font-bold text-gray-800 mb-4">
-          Your personal impact from Georgia 2026 tax changes (HB463, {request?.year ?? 2026})
+          Your personal impact from Georgia 2026 tax changes (HB463, {shownRequest?.year ?? 2026})
         </h3>
         <p className="text-gray-600 mb-4">
-          Based on your employment income of <strong>{formatCurrency(request?.income ?? 0)}</strong>,
+          Based on your employment income of <strong>{formatCurrency(shownRequest?.income ?? 0)}</strong>,
           comparing current law (HB463) to pre-HB463 baseline.
         </p>
 

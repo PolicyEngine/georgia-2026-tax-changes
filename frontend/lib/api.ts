@@ -36,6 +36,18 @@ const CALCULATION_TIMEOUT_MILLISECONDS = 120_000;
 /** Brief gateway failures, which are worth retrying. */
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
+/**
+ * How long the page waits after a refusal for the firewall's limit before
+ * it calculates again: the firewall counts calculations a minute.
+ */
+export const RATE_LIMIT_PAUSE_MILLISECONDS = 60_000;
+
+/** What the page says about the firewall's limit, which everyone behind
+ * one address shares. */
+const SHARED_LIMIT_EXPLANATION =
+  "Everyone on your network, such as a workshop or an office, shares a " +
+  "limit on calculations a minute";
+
 /** A household calculation failed; `message` is written for the user. */
 export class HouseholdCalculationError extends Error {
   override name = "HouseholdCalculationError";
@@ -46,6 +58,11 @@ export class HouseholdCalculationError extends Error {
     readonly status: number | null,
     /** Whether trying again at once could succeed. */
     readonly retryable: boolean,
+    /**
+     * Whether the firewall's limit may have refused it: a 429, or no
+     * readable answer, which is how a page on another origin sees a 429.
+     */
+    readonly rateLimited: boolean = false,
   ) {
     super(message);
   }
@@ -84,19 +101,21 @@ function calculationError(error: PolicyEngineApiError): HouseholdCalculationErro
     // 429 has no CORS headers, so the browser reports a network failure.
     // So does the dashboard API's 403 for an origin it does not allow.
     return new HouseholdCalculationError(
-      "PolicyEngine's calculation service could not be reached. If many " +
-        "calculations have been run from your network in the last minute, " +
-        "wait a minute and try again.",
+      "PolicyEngine's calculation service could not be reached. " +
+        `${SHARED_LIMIT_EXPLANATION}: if it has been reached, this page can ` +
+        "calculate again in a minute.",
       null,
       false,
+      true,
     );
   }
   if (error.status === 429) {
     return new HouseholdCalculationError(
-      "Too many calculations have been run from your network in the last " +
-        "minute. Wait a minute and try again.",
+      `${SHARED_LIMIT_EXPLANATION}, and it has been reached. This page can ` +
+        "calculate again in a minute.",
       429,
       false,
+      true,
     );
   }
   const detail =
