@@ -374,7 +374,9 @@ describe("calculateHouseholdImpact", () => {
 
   it("shows a 504 without retrying it", async () => {
     // The dashboard API answers 504 after waiting 750 s for the household,
-    // so trying again would wait as long again.
+    // so trying again would wait as long again. Its message names the
+    // Public API and gives the reader nothing to do, so the page says what
+    // happened in its own words.
     stubFetch(() =>
       jsonResponse(504, {
         status: "error",
@@ -385,10 +387,11 @@ describe("calculateHouseholdImpact", () => {
 
     expect(await calculationFailure()).toMatchObject({
       message:
-        "PolicyEngine could not calculate this household (HTTP 504): The " +
-        "Public API did not answer in time.",
+        "PolicyEngine's calculation service did not answer in time (HTTP " +
+        "504). Try again in a few minutes.",
       status: 504,
       retryable: false,
+      rateLimited: false,
     });
   });
 
