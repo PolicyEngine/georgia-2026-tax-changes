@@ -372,7 +372,45 @@ describe("calculateHouseholdImpact", () => {
     });
   });
 
-  it("gives up after two minutes without an answer", async () => {
+  it("shows a 504 without retrying it", async () => {
+    // The dashboard API answers 504 after waiting 750 s for the household,
+    // so trying again would wait as long again.
+    stubFetch(() =>
+      jsonResponse(504, {
+        status: "error",
+        message: "The Public API did not answer in time.",
+        result: null,
+      }),
+    );
+
+    expect(await calculationFailure()).toMatchObject({
+      message:
+        "PolicyEngine could not calculate this household (HTTP 504): The " +
+        "Public API did not answer in time.",
+      status: 504,
+      retryable: false,
+    });
+  });
+
+  it("keeps the wait a failure asks for in its Retry-After", async () => {
+    stubFetch(
+      () =>
+        new Response("Service Unavailable", {
+          status: 503,
+          headers: { "Content-Type": "text/plain", "Retry-After": "30" },
+        }),
+    );
+
+    expect(await calculationFailure()).toMatchObject({
+      status: 503,
+      retryable: true,
+      retryAfterSeconds: 30,
+    });
+  });
+
+  it("gives up after 13 minutes without an answer", async () => {
+    // 30 s more than the dashboard API's 750-s wait for the household, so
+    // the dashboard API's own answer, a 504 included, arrives first.
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
@@ -386,11 +424,16 @@ describe("calculateHouseholdImpact", () => {
       ),
     );
 
-    const failure = calculationFailure();
-    await vi.advanceTimersByTimeAsync(120_000);
+    let failureSettled = false;
+    const failure = calculationFailure().finally(() => {
+      failureSettled = true;
+    });
+    await vi.advanceTimersByTimeAsync(779_999);
+    expect(failureSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
 
     expect(await failure).toMatchObject({
-      message: expect.stringMatching(/two minutes/i),
+      message: "The calculation took longer than 13 minutes. Try again.",
       status: null,
       retryable: false,
       rateLimited: false,
@@ -411,5 +454,13 @@ describe("shouldRetryHouseholdCalculation", () => {
     ).toEqual([true, false]);
     expect(shouldRetryHouseholdCalculation(0, rateLimited)).toBe(false);
     expect(shouldRetryHouseholdCalculation(0, new Error("other"))).toBe(false);
+  });
+
+  it("does not retry a failure that asks for a wait over a minute", () => {
+    const asksForOneMinute = new HouseholdCalculationError("", 503, true, false, 60);
+    const asksForLonger = new HouseholdCalculationError("", 503, true, false, 61);
+
+    expect(shouldRetryHouseholdCalculation(0, asksForOneMinute)).toBe(true);
+    expect(shouldRetryHouseholdCalculation(0, asksForLonger)).toBe(false);
   });
 });

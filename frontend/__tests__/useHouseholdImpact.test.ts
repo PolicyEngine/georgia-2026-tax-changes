@@ -277,6 +277,44 @@ describe("householdImpactQueryOptions", () => {
     queryClient.unmount();
   });
 
+  it("waits as long as the failure's Retry-After asks before its one retry", async () => {
+    vi.useFakeTimers();
+    const calculate = vi
+      .spyOn(api, "calculateHouseholdImpact")
+      .mockRejectedValueOnce(
+        new HouseholdCalculationError("HTTP 503", 503, true, false, 5),
+      )
+      .mockResolvedValue(impactAnswer(350));
+    const observer = new QueryObserver(
+      queryClient,
+      householdImpactQueryOptions(householdRequest, true),
+    );
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(calculate).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(calculate).toHaveBeenCalledTimes(2));
+    unsubscribe();
+  });
+
+  it("waits at least two seconds before its one retry", async () => {
+    vi.useFakeTimers();
+    const calculate = vi
+      .spyOn(api, "calculateHouseholdImpact")
+      .mockRejectedValueOnce(new HouseholdCalculationError("HTTP 502", 502, true))
+      .mockResolvedValue(impactAnswer(350));
+    const observer = new QueryObserver(
+      queryClient,
+      householdImpactQueryOptions(householdRequest, true),
+    );
+    const unsubscribe = observer.subscribe(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(calculate).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(calculate).toHaveBeenCalledTimes(2));
+    unsubscribe();
+  });
+
   it("keeps answers for the page's lifetime", async () => {
     vi.useFakeTimers();
     vi.spyOn(api, "calculateHouseholdImpact").mockResolvedValue(

@@ -68,6 +68,26 @@ function impactAnswer(difference: number): HouseholdImpactResponse {
   };
 }
 
+describe('ImpactAnalysis while a household calculates', () => {
+  it('says a first calculation can take a few minutes', () => {
+    useHouseholdImpactMock.mockReturnValue({
+      data: undefined,
+      shownRequest: householdRequest,
+      isLoading: true,
+      error: null,
+      rateLimitNotice: null,
+      shownPrecomputed: null,
+    });
+
+    render(<ImpactAnalysis request={householdRequest} triggered />);
+
+    expect(screen.getByText('Calculating impact...')).toBeInTheDocument();
+    expect(
+      screen.queryByText('A first calculation can take a few minutes.'),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('ImpactAnalysis error panel', () => {
   it('ends the failure message with a single full stop', () => {
     // A failed calculation, as useHouseholdImpact reports it.
@@ -156,8 +176,10 @@ describe('ImpactAnalysis after a rate-limit refusal', () => {
     render(<ImpactAnalysis request={householdRequest} triggered />);
 
     // The notice keeps its own full stop.
-    expect(screen.getByRole('status')).toHaveTextContent(rateLimitNotice);
     expect(screen.getByText(rateLimitNotice)).toBeInTheDocument();
+    // The explanation beside the Calculate button is the page's one live
+    // region for the pause, so the notice is not another.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     // The answer kept may be a precomputed example, or a household shown
     // again from the cache, rather than the last one calculated.
     expect(

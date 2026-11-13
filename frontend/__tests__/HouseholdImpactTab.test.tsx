@@ -171,7 +171,7 @@ async function keepExampleAfterRefusal(): Promise<{
   });
   fireEvent.click(screen.getByRole('button', { name: 'Calculate impact' }));
   await waitFor(() =>
-    expect(resultsArea().getByRole('status')).toHaveTextContent(REFUSAL_MESSAGE),
+    expect(resultsArea().getByText(REFUSAL_MESSAGE)).toBeInTheDocument(),
   );
   return { exampleCard, container };
 }
@@ -201,7 +201,7 @@ describe('HouseholdImpactTab after a rate-limit refusal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Calculate impact' }));
 
     await waitFor(() =>
-      expect(resultsArea().getByRole('status')).toHaveTextContent(REFUSAL_MESSAGE),
+      expect(resultsArea().getByText(REFUSAL_MESSAGE)).toBeInTheDocument(),
     );
     // The example's results, labelled with its income, and its breakdown
     // by provision.
@@ -213,7 +213,8 @@ describe('HouseholdImpactTab after a rate-limit refusal', () => {
   });
 
   it('explains the pause beside the Calculate button', async () => {
-    stubFetch(() => true);
+    let refusing = true;
+    stubFetch(() => refusing);
     renderHouseholdImpactTab();
 
     const calculateButton = screen.getByRole('button', { name: 'Calculate impact' });
@@ -231,6 +232,27 @@ describe('HouseholdImpactTab after a rate-limit refusal', () => {
     expect(liveRegion.parentElement).toHaveTextContent(
       /^Everyone on your network, such as a workshop or an office, shares a limit on calculations a minute\. This page can calculate again in \d+ s\.$/,
     );
+
+    // After the minute, a household is calculated; the next one is refused,
+    // and the earlier answer stays on screen with the notice above it.
+    act(() => pauseHouseholdCalculations(0));
+    refusing = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate impact' }));
+    await waitFor(() => expect(resultsArea().getByText('$50,000')).toBeInTheDocument());
+    refusing = true;
+    fireEvent.change(screen.getByDisplayValue('50,000'), { target: { value: '60,000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate impact' }));
+    await waitFor(() =>
+      expect(resultsArea().getByText(REFUSAL_MESSAGE)).toBeInTheDocument(),
+    );
+
+    // The explanation is announced once, by the region beside the button.
+    const regionsWithExplanation = screen
+      .getAllByRole('status')
+      .filter((region) => region.textContent?.startsWith('Everyone on your network'));
+    expect(regionsWithExplanation).toEqual([
+      within(calculateButton.parentElement as HTMLElement).getByRole('status'),
+    ]);
   });
 
   it('disables the Calculate button, labelled with its countdown, during a pause', async () => {
@@ -315,7 +337,7 @@ describe('HouseholdImpactTab after a rate-limit refusal', () => {
 
     refusing = true;
     fireEvent.click(screen.getByRole('button', { name: '$1M' }));
-    await waitFor(() => expect(resultsArea().getByRole('status')).toBeInTheDocument());
+    await waitFor(() => expect(resultsArea().getByText(REFUSAL_MESSAGE)).toBeInTheDocument());
 
     // The answer calculated up to $100k, drawn up to $100k.
     expect(screen.getByRole('button', { name: '$100k' })).toHaveClass('bg-primary-500');
