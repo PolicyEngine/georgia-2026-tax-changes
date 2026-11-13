@@ -19,3 +19,12 @@ income exclusion (TY 2027+) — on households, statewide revenue, and Georgia's
   policyengine-us (PR #8306). Modal precompute runs will fail until then.
 
 Live: TBD (Vercel project + appZoneRoutes entry to follow).
+
+Where the household tab can calculate: it calls www.policyengine.org's
+dashboard API, which answers pages on www.policyengine.org (this dashboard's
+route there, once its `appZoneRoutes.ts` entry is deployed), the Vercel
+project's own `<project>-policy-engine.vercel.app` host and its previews (from
+the first deploy), and `localhost`. The short `<project>.vercel.app` host is
+refused until the `appZoneRoutes.ts` entry naming it is deployed; there the
+browser reads no answer, so the tab shows the shared-limit message and pauses
+for a minute after each try.
