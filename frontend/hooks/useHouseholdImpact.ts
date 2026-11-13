@@ -9,6 +9,7 @@ import {
   api,
   HouseholdCalculationError,
   householdCalculationPauseRemaining,
+  householdRetryDelay,
   onHouseholdCalculationPause,
   pauseHouseholdCalculations,
   shouldRetryHouseholdCalculation,
@@ -103,9 +104,11 @@ export function householdImpactQueryOptions(
     queryKey: householdImpactQueryKey(request),
     queryFn: () => api.calculateHouseholdImpact(request!),
     enabled: enabled && request !== null,
-    // Retry only brief gateway failures: a rate-limited calculation would be
-    // refused again until the firewall's one-minute window ends.
+    // Retry only brief gateway failures, once: a rate-limited calculation
+    // would be refused again until the firewall's one-minute window ends.
+    // The retry waits the larger of 2 s and the failure's Retry-After.
     retry: shouldRetryHouseholdCalculation,
+    retryDelay: householdRetryDelay,
     // A household's answer does not change, so the page keeps every answer
     // and calculates a household only when it is submitted: never when an
     // answer gets old, the window regains focus, the network reconnects, or
