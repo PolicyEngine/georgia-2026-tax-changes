@@ -1,11 +1,17 @@
 'use client';
 
 import { useEffect, useCallback, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import ImpactAnalysis from '@/components/ImpactAnalysis';
 import AggregateImpact from '@/components/AggregateImpact';
 import ExampleHouseholds, { type ExampleHouseholdProfile } from '@/components/ExampleHouseholds';
 import PolicyOverview from '@/components/PolicyOverview';
 import CongressionalDistrictImpact from '@/components/CongressionalDistrictImpact';
+import {
+  submitHouseholdRequest,
+  useHouseholdCalculationPause,
+} from '@/hooks/useHouseholdImpact';
+import { SHARED_LIMIT_EXPLANATION } from '@/lib/api';
 import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
 import { parseHashParams } from '@/lib/embedding';
 
@@ -82,6 +88,7 @@ export default function Home() {
 
 /** Household impact tab */
 function HouseholdImpactTab() {
+  const queryClient = useQueryClient();
   // Initialize state from hash parameters if present
   const getInitialValues = () => {
     if (typeof window === 'undefined') {
@@ -111,14 +118,44 @@ function HouseholdImpactTab() {
   const [submittedRequest, setSubmittedRequest] = useState<HouseholdRequest | null>(null);
   const [precomputedImpact, setPrecomputedImpact] =
     useState<HouseholdImpactResponse | null>(null);
-  const [selectedExampleLabel, setSelectedExampleLabel] = useState<string | null>(null);
+  // The example chosen last from its card; a new object for each choice.
+  const [chosenExample, setChosenExample] = useState<{ label: string } | null>(null);
+  // The household whose answer the results area shows, as ImpactAnalysis
+  // reports it, with its precomputed answer when it is an example.
+  const [shownHousehold, setShownHousehold] = useState<{
+    request: HouseholdRequest;
+    precomputed: HouseholdImpactResponse | null;
+  } | null>(null);
   const impactRef = useRef<HTMLDivElement | null>(null);
+  // After a refusal for the firewall's limit, the page calculates nothing
+  // for a minute: everyone on the network shares the limit.
+  const calculationPauseSeconds = useHouseholdCalculationPause();
+  const calculationsPaused = calculationPauseSeconds > 0;
+  // The highlighted chart range follows the answer on screen.
+  const showShownHousehold = useCallback(
+    (request: HouseholdRequest | null, precomputed: HouseholdImpactResponse | null) => {
+      setShownHousehold(request === null ? null : { request, precomputed });
+      if (request !== null) {
+        setMaxEarnings(request.max_earnings);
+      }
+    },
+    [],
+  );
+  // The example whose precomputed answer is on screen: chosen from its
+  // card, or kept there after a refusal for the firewall's limit.
+  const shownExample =
+    shownHousehold !== null && shownHousehold.precomputed !== null
+      ? { request: shownHousehold.request, precomputed: shownHousehold.precomputed }
+      : null;
+  // Only the example chosen last can be on screen; its card is marked
+  // while it is.
+  const markedExampleLabel = shownExample !== null ? (chosenExample?.label ?? null) : null;
 
   useEffect(() => {
-    if (selectedExampleLabel && impactRef.current) {
+    if (chosenExample && impactRef.current) {
       impactRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [selectedExampleLabel]);
+  }, [chosenExample]);
 
   // Listen for hash changes to update form values
   useEffect(() => {
@@ -180,10 +217,13 @@ function HouseholdImpactTab() {
   });
 
   const handleCalculate = () => {
-    setSubmittedRequest(buildRequest());
-    setTriggered(true);
-    setPrecomputedImpact(null);
-    setSelectedExampleLabel(null);
+    // A failed calculation of the same household runs again. The chosen
+    // example's card stays marked while a refusal keeps its answer on
+    // screen.
+    if (submitHouseholdRequest(queryClient, buildRequest(), setSubmittedRequest)) {
+      setTriggered(true);
+      setPrecomputedImpact(null);
+    }
   };
 
   /** Click handler from ExampleHouseholds. Mirrors the profile into
@@ -193,7 +233,7 @@ function HouseholdImpactTab() {
     profile: ExampleHouseholdProfile,
     response: HouseholdImpactResponse,
   ) => {
-    setSelectedExampleLabel(profile.label);
+    setChosenExample({ label: profile.label });
     setIncome(profile.income);
     setAgeHead(profile.age_head);
     setAgeHeadRaw(String(profile.age_head));
@@ -224,7 +264,7 @@ function HouseholdImpactTab() {
           values (no live API call). */}
       <ExampleHouseholds
         onSelect={handleSelectExample}
-        selectedLabel={selectedExampleLabel}
+        selectedLabel={markedExampleLabel}
       />
 
       {/* Inline household config */}
@@ -354,10 +394,21 @@ function HouseholdImpactTab() {
         <div className="mt-8">
           <button
             onClick={handleCalculate}
-            className="py-3 px-10 rounded-lg font-semibold text-white bg-primary-500 hover:bg-primary-600 active:bg-primary-700 transition-all shadow-sm hover:shadow-md sm:w-auto w-full"
+            disabled={calculationsPaused}
+            className="py-3 px-10 rounded-lg font-semibold text-white bg-primary-500 hover:bg-primary-600 active:bg-primary-700 transition-all shadow-sm hover:shadow-md sm:w-auto w-full disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Calculate impact
+            {calculationsPaused
+              ? `Calculate again in ${calculationPauseSeconds} s`
+              : 'Calculate impact'}
           </button>
+          {calculationsPaused && (
+            <p className="mt-3 text-sm text-amber-800">
+              {/* Only the explanation is announced; the countdown changes
+                  every second. */}
+              <span role="status">{SHARED_LIMIT_EXPLANATION}.</span> This page
+              can calculate again in {calculationPauseSeconds} s.
+            </p>
+          )}
         </div>
       </section>
 
@@ -368,9 +419,24 @@ function HouseholdImpactTab() {
           {[100000, 200000, 500000, 1000000].map((v) => (
             <button
               key={v}
+              // Rescaling an example on screen, chosen or kept after a
+              // refusal, sends no calculation, so the pause does not stop it.
+              disabled={calculationsPaused && shownExample === null}
               onClick={() => {
-                setMaxEarnings(v);
-                setSubmittedRequest(prev => prev ? { ...prev, max_earnings: v } : null);
+                if (shownExample !== null) {
+                  setSubmittedRequest({ ...shownExample.request, max_earnings: v });
+                  setPrecomputedImpact(shownExample.precomputed);
+                  setMaxEarnings(v);
+                } else if (
+                  submittedRequest === null ||
+                  submitHouseholdRequest(
+                    queryClient,
+                    { ...submittedRequest, max_earnings: v },
+                    setSubmittedRequest
+                  )
+                ) {
+                  setMaxEarnings(v);
+                }
               }}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 maxEarnings === v
@@ -392,6 +458,7 @@ function HouseholdImpactTab() {
             triggered={triggered}
             maxEarnings={maxEarnings}
             precomputed={precomputedImpact}
+            onShownRequestChange={showShownHousehold}
           />
         </div>
       )}

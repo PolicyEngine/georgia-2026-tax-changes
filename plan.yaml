@@ -17,11 +17,12 @@ dashboard:
 
 # Data pattern explanation:
 # Using hybrid pattern matching keep-your-pay-act:
-# - Household tab: Uses PolicyEngine API directly (policyengine-api pattern)
+# - Household tab: Uses the PolicyEngine Public API through www.policyengine.org's
+#   dashboard API (@policyengine/api-client); the page never calls the Public API itself
 # - National tab: Uses precomputed CSV data (precomputed-csv pattern)
 #
 # This approach is preferred because:
-# 1. Household calculations are fast enough to run live via PE API
+# 1. Household calculations are fast enough to run live through the dashboard API
 # 2. National microsimulation is slow (2-5 min/year) so must be precomputed
 # 3. No custom Modal backend needed - the reform is a contributed reform
 #    in policyengine-us (PR #7914), so we can use Reform.from_dict()
@@ -72,7 +73,10 @@ reform:
 
 # API integration for household calculator
 api_integration:
-  endpoint: "https://api.policyengine.org/us/calculate"
+  # www.policyengine.org's dashboard API, called with @policyengine/api-client;
+  # it forwards to the Public API's POST /us/calculate with PolicyEngine's
+  # credential.
+  endpoint: "https://www.policyengine.org/api/household/calculate"
   method: POST
   variables_requested:
     - household_net_income

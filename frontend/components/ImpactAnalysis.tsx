@@ -11,7 +11,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { useEffect } from 'react';
 import { useHouseholdImpact } from '@/hooks/useHouseholdImpact';
+import { HouseholdCalculationError } from '@/lib/api';
 import type {
   HouseholdImpactResponse,
   HouseholdRequest,
@@ -28,8 +30,19 @@ interface Props {
   triggered: boolean;
   maxEarnings?: number;
   /** When supplied, the chart renders this precomputed payload instead
-   * of firing a live /us/calculate request. */
+   * of sending a live household calculation through the dashboard API. */
   precomputed?: HouseholdImpactResponse | null;
+  /**
+   * Told which household's answer is shown, so the page can highlight its
+   * chart range: after a refusal for the firewall's limit, that is the
+   * household shown before, not the refused one. `precomputed` is its
+   * answer when it is an example household, which the page rescales
+   * without calculating; null for a calculated answer.
+   */
+  onShownRequestChange?: (
+    request: HouseholdRequest | null,
+    precomputed: HouseholdImpactResponse | null,
+  ) => void;
 }
 
 const PROVISION_ORDER: ProvisionKey[] = [
@@ -57,11 +70,15 @@ export default function ImpactAnalysis({
   triggered,
   maxEarnings,
   precomputed,
+  onShownRequestChange,
 }: Props) {
-  const liveQuery = useHouseholdImpact(request, triggered && !precomputed);
-  const data = precomputed ?? liveQuery.data;
-  const isLoading = !precomputed && liveQuery.isLoading;
-  const error = precomputed ? null : liveQuery.error;
+  // After a refusal for the firewall's limit, the hook shows the answer
+  // shown before, calculated or precomputed, with the reason.
+  const { data, isLoading, error, shownRequest, shownPrecomputed, rateLimitNotice } =
+    useHouseholdImpact(request, triggered, precomputed ?? null);
+  useEffect(() => {
+    onShownRequestChange?.(shownRequest, shownPrecomputed);
+  }, [onShownRequestChange, shownRequest, shownPrecomputed]);
 
   if (!triggered) return null;
 
@@ -71,22 +88,49 @@ export default function ImpactAnalysis({
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
           <p className="mt-4 text-gray-600">Calculating impact...</p>
+          <p className="mt-1 text-sm text-gray-500">
+            A first calculation can take a few minutes.
+          </p>
         </div>
       </div>
     );
   }
 
+  if (error instanceof HouseholdCalculationError && error.rateLimited) {
+    // A refusal for the firewall's limit with nothing shown before: the
+    // explanation as written, not as an error from the API.
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <h2 className="text-yellow-800 font-semibold mb-2">
+          Household calculator temporarily unavailable
+        </h2>
+        <p className="text-yellow-700">{error.message}</p>
+        <p className="mt-2 text-yellow-700">
+          You can still see precomputed results in the example-household cards
+          above or on the <strong>Statewide impact</strong> tab.
+        </p>
+      </div>
+    );
+  }
+
   if (error) {
-    const errorMessage = (error as Error).message;
+    // The panel adds its own full stop after the message.
+    const errorMessage = (error as Error).message.replace(/\.$/, '');
+    // A network failure or a timeout: no answer arrived to report.
+    const noAnswerArrived =
+      error instanceof HouseholdCalculationError && error.status === null;
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <h2 className="text-yellow-800 font-semibold mb-2">
           Household calculator temporarily unavailable
         </h2>
         <p className="text-yellow-700">
-          The PolicyEngine API returned an error: <code>{errorMessage}</code>. You
-          can still see precomputed results in the example-household cards above
-          or on the <strong>Georgia impact</strong> tab.
+          {noAnswerArrived
+            ? 'The page received no answer from the PolicyEngine API: '
+            : 'The PolicyEngine API returned an error: '}
+          <code>{errorMessage}</code>. You can still see precomputed results in
+          the example-household cards above or on the{' '}
+          <strong>Statewide impact</strong> tab.
         </p>
       </div>
     );
@@ -113,7 +157,8 @@ export default function ImpactAnalysis({
   const stateTaxChangePoint = benefitData.state_tax_change;
   const netIncomeChangePoint = benefitData.net_income_change;
 
-  const xMax = maxEarnings ?? data.x_axis_max;
+  // The range the shown answer was calculated for.
+  const xMax = shownRequest?.max_earnings ?? maxEarnings ?? data.x_axis_max;
 
   const federalTaxChangeSeries = data.federalTaxChange;
   const stateTaxChangeSeries = data.stateTaxChange;
@@ -297,15 +342,24 @@ export default function ImpactAnalysis({
 
   return (
     <div className="space-y-8">
+      {/* Not a live region: calculations are paused whenever this notice
+          first appears, and the explanation beside the Calculate button is
+          the one live region that announces the shared limit. */}
+      {rateLimitNotice && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
+          <p>{rateLimitNotice}</p>
+          <p className="mt-1 text-sm">The results below are for the household shown before.</p>
+        </div>
+      )}
       <h2 className="text-2xl font-bold text-primary">Impact analysis</h2>
 
       {/* Personal impact */}
       <div>
         <h3 className="text-xl font-bold text-gray-800 mb-4">
-          Your personal impact from Georgia 2026 tax changes (HB463, {request?.year ?? 2026})
+          Your personal impact from Georgia 2026 tax changes (HB463, {shownRequest?.year ?? 2026})
         </h3>
         <p className="text-gray-600 mb-4">
-          Based on your employment income of <strong>{formatCurrency(request?.income ?? 0)}</strong>,
+          Based on your employment income of <strong>{formatCurrency(shownRequest?.income ?? 0)}</strong>,
           comparing current law (HB463) to pre-HB463 baseline.
         </p>
 
